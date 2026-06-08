@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ProductStatus, SubAvail } from '@prisma/client';
+import { Prisma, ProductStatus, ProductType, SubAvail } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ListProductsDto } from './dto/list-products.dto';
 
@@ -80,6 +80,47 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException(`Producto "${slug}" no encontrado`);
     }
-    return product;
+
+    const related = await this.related(tenantId, product);
+    return { ...product, related };
+  }
+
+  /** Productos relacionados: mismo tipo o notas compartidas, excluyendo el actual. */
+  private async related(
+    tenantId: string,
+    product: { id: string; type: ProductType; flavorNotes: string[] },
+  ) {
+    return this.prisma.product.findMany({
+      where: {
+        tenantId,
+        status: ProductStatus.ACTIVE,
+        subscriptionAvailability: { not: SubAvail.SUBSCRIPTION_ONLY },
+        id: { not: product.id },
+        OR: [
+          { type: product.type },
+          ...(product.flavorNotes.length
+            ? [{ flavorNotes: { hasSome: product.flavorNotes } }]
+            : []),
+        ],
+      },
+      take: 4,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        type: true,
+        origin: true,
+        roastLevel: true,
+        flavorNotes: true,
+        badges: true,
+        images: { orderBy: { position: 'asc' }, take: 1 },
+        variants: {
+          orderBy: { sizeGrams: 'asc' },
+          take: 1,
+          select: { id: true, sizeGrams: true, priceOneTime: true },
+        },
+      },
+    });
   }
 }

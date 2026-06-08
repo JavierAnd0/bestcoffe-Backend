@@ -254,6 +254,76 @@ async function main() {
     });
   }
 
+  // ── Contenido del storefront (Home A) ─────────────────────────────────────
+  const contentSeed = [
+    {
+      kind: 'ANNOUNCEMENT' as const,
+      position: 0,
+      data: { text: 'Envío gratis en compras sobre $150.000', cta: null },
+    },
+    {
+      kind: 'ANNOUNCEMENT' as const,
+      position: 1,
+      data: { text: 'Suscríbete y ahorra 10% en cada entrega', cta: { label: 'Ver planes', href: '/suscripciones' } },
+    },
+    {
+      kind: 'HERO' as const,
+      position: 0,
+      data: {
+        title: 'Café de origen, tostado fresco',
+        subtitle: 'Directo de fincas colombianas a tu taza',
+        cta: { label: 'Explorar catálogo', href: '/catalogo' },
+        imageDesktop: 'https://picsum.photos/seed/hero-desktop/1600/900',
+        imageMobile: 'https://picsum.photos/seed/hero-mobile/800/1000',
+      },
+    },
+    {
+      kind: 'SPOTLIGHT' as const,
+      position: 0,
+      data: { productSlug: 'huila-supremo', title: 'Producto del mes' },
+    },
+    {
+      kind: 'FEATURED_BUNDLE' as const,
+      position: 0,
+      data: { title: 'Trío Descubrimiento', productSlugs: ['huila-supremo', 'narino-altura', 'sierra-nevada'] },
+    },
+  ];
+  // limpiamos contenido previo del tenant para mantener el seed idempotente
+  await prisma.siteContent.deleteMany({ where: { tenantId: tenant.id } });
+  for (const c of contentSeed) {
+    await prisma.siteContent.create({
+      data: { tenantId: tenant.id, kind: c.kind, data: c.data, position: c.position, active: true },
+    });
+  }
+
+  // ── Blog ──────────────────────────────────────────────────────────────────
+  await prisma.blogPost.upsert({
+    where: { tenantId_slug: { tenantId: tenant.id, slug: 'como-preparar-v60' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      slug: 'como-preparar-v60',
+      title: 'Cómo preparar un V60 perfecto',
+      excerpt: 'La guía paso a paso para un filtrado limpio y dulce.',
+      body: 'Calienta el agua a 92–94°C, usa una proporción 1:16…',
+      coverUrl: 'https://picsum.photos/seed/v60/1200/630',
+      publishedAt: new Date(),
+    },
+  });
+
+  // ── Código de descuento ───────────────────────────────────────────────────
+  await prisma.discountCode.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'BIENVENIDO10' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      code: 'BIENVENIDO10',
+      type: 'PERCENTAGE',
+      value: 10,
+      active: true,
+    },
+  });
+
   console.log(`✅ Seed completo: tenant=${tenant.slug}, productos=${createdProducts.length}`);
 }
 

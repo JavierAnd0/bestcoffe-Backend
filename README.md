@@ -76,9 +76,29 @@ curl -X POST localhost:3001/v1/auth/login \
 - El índice único parcial "una suscripción `ACTIVE` por (customer, variant)"
   se crea en una migración SQL manual (Prisma no lo soporta en el schema).
 
+## Endpoints del storefront (Fase 2)
+
+Todos públicos (solo `TenantGuard`), scope por `X-Tenant-Slug`:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/v1/products` | Catálogo paginado (filtros: tipo, tostado, nota, colección) |
+| GET | `/v1/products/:slug` | PDP + reseñas APPROVED + relacionados |
+| GET | `/v1/collections` | Colecciones con conteo |
+| GET | `/v1/collections/:slug` | Colección resuelta (MANUAL ordenada / AUTO por reglas) |
+| GET | `/v1/content/home` | Anuncios, hero, spotlight, bundle (por vigencia) |
+| GET | `/v1/blog` · `/v1/blog/:slug` | Posts publicados |
+| POST | `/v1/quiz/recommend` | Recomendación por scoring (notas/tostado/tipo/decaf) |
+| POST | `/v1/cart/price` | Pricing autoritativo: stock, descuento, envío |
+| POST | `/v1/reviews` | Alta de reseña (queda PENDING) |
+| GET | `/v1/tenants/current` | Branding + features del tenant |
+
 ## Estado
 
 - ✅ **Fase 0** — scaffold, Prisma + schema completo, guards/interceptors,
-  módulos esqueleto, `GET /v1/products` + PDP, auth operador, Swagger, seed,
-  endpoint Inngest. Verificado end-to-end.
-- ⬜ Fases 1–6 — ver el plan del proyecto.
+  módulos esqueleto, auth operador, Swagger, seed, endpoint Inngest.
+- ✅ **Fase 2 (backend)** — endpoints del storefront (tabla arriba),
+  verificados end-to-end.
+- ⬜ **Fase 3** — admin CRUD (productos/variantes/imágenes, colecciones,
+  pedidos, suscripciones, contenido, promos, reseñas, config) + revalidación ISR.
+- ⬜ **Fase 2/4** — Stripe Connect + checkout + motor de suscripciones (Inngest).

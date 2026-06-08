@@ -11,8 +11,13 @@ import { HealthModule } from './modules/health/health.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductsModule } from './modules/products/products.module';
-import { CustomersModule } from './modules/customers/customers.module';
 import { CollectionsModule } from './modules/collections/collections.module';
+import { ContentModule } from './modules/content/content.module';
+import { BlogModule } from './modules/blog/blog.module';
+import { QuizModule } from './modules/quiz/quiz.module';
+import { CartModule } from './modules/cart/cart.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
+import { CustomersModule } from './modules/customers/customers.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
@@ -51,8 +56,13 @@ import { InngestModule } from './modules/inngest/inngest.module';
     TenantsModule,
     AuthModule,
     ProductsModule,
-    CustomersModule,
     CollectionsModule,
+    ContentModule,
+    BlogModule,
+    QuizModule,
+    CartModule,
+    ReviewsModule,
+    CustomersModule,
     OrdersModule,
     SubscriptionsModule,
     StripeModule,
