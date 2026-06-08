@@ -1,0 +1,580 @@
+// BestCoffee API — multi-tenant SaaS de café de especialidad
+// Prisma 7 (driver adapter + prisma.config.ts; sin url en datasource)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────
+
+enum Tier {
+  STARTER
+  PRO
+  BUSINESS
+}
+
+enum OperatorRole {
+  PLATFORM_OWNER
+  TENANT_OWNER
+  TENANT_EDITOR
+  TENANT_ORDERS
+}
+
+enum ProductType {
+  BLEND
+  SINGLE_ORIGIN
+  DECAF
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum SubAvail {
+  YES
+  NO
+  SUBSCRIPTION_ONLY
+}
+
+enum GrindFormat {
+  WHOLE_BEAN
+  ESPRESSO
+  FILTER
+  FRENCH_PRESS
+}
+
+enum CollectionType {
+  MANUAL
+  AUTO
+}
+
+enum OrderSource {
+  CHECKOUT
+  SUBSCRIPTION_RENEWAL
+  GIFT
+}
+
+enum OrderStatus {
+  RECEIVED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  FAILED
+  REFUNDED
+}
+
+enum SubStatus {
+  ACTIVE
+  PAUSED
+  SKIPPED_NEXT
+  CANCELLED
+  PAYMENT_FAILED
+}
+
+enum GiftStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  COMPLETED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum SiteContentKind {
+  ANNOUNCEMENT
+  HERO
+  SPOTLIGHT
+  FEATURED_BUNDLE
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tenancy & plataforma
+// ─────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id                     String  @id @default(cuid())
+  slug                   String  @unique
+  name                   String
+  stripeConnectAccountId String?
+  platformSubscriptionId String?
+  tier                   Tier    @default(STARTER)
+  features               Json    @default("{}")
+  branding               Json    @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domains       TenantDomain[]
+  memberships   TenantMembership[]
+  customers     Customer[]
+  products      Product[]
+  collections   Collection[]
+  orders        Order[]
+  subscriptions Subscription[]
+  gifts         GiftSubscription[]
+  discountCodes DiscountCode[]
+  reviews       Review[]
+  siteContent   SiteContent[]
+  blogPosts     BlogPost[]
+  brewGuides    BrewGuide[]
+  locations     StoreLocation[]
+  auditLogs     AuditLog[]
+}
+
+model TenantDomain {
+  id        String   @id @default(cuid())
+  tenantId  String
+  domain    String   @unique
+  isPrimary Boolean  @default(false)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  memberships TenantMembership[]
+}
+
+model TenantMembership {
+  userId    String
+  tenantId  String
+  role      OperatorRole
+  createdAt DateTime     @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tenantId])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Clientes finales
+// ─────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id               String   @id @default(cuid())
+  tenantId         String
+  email            String
+  name             String?
+  phone            String?
+  stripeCustomerId String? // en la cuenta Connect del tenant
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses     Address[]
+  orders        Order[]
+  subscriptions Subscription[]
+  reviews       Review[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  tenantId   String
+  customerId String
+  label      String?
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String?
+  country    String  @default("CO")
+  phone      String?
+  isDefault  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([customerId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Catálogo
+// ─────────────────────────────────────────────────────────────────────────
+
+model Product {
+  id                       String        @id @default(cuid())
+  tenantId                 String
+  slug                     String
+  name                     String
+  type                     ProductType
+  origin                   String?
+  description              String?
+  producerStory            String?
+  roastLevel               Int // 1..9
+  flavorNotes              String[]
+  badges                   String[]
+  status                   ProductStatus @default(DRAFT)
+  subscriptionAvailability SubAvail      @default(YES)
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  images      ProductImage[]
+  variants    ProductVariant[]
+  collections CollectionProduct[]
+  reviews     Review[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  tenantId  String
+  productId String
+  url       String
+  alt       String?
+  position  Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+}
+
+model ProductVariant {
+  id                        String      @id @default(cuid())
+  tenantId                  String
+  productId                 String
+  sizeGrams                 Int
+  grind                     GrindFormat
+  priceOneTime              Int // COP centavos
+  priceSubscription         Int?
+  stock                     Int         @default(0)
+  stripePriceIdOneTime      String?
+  stripePriceIdSubscription String?
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+  gifts         GiftSubscription[]
+
+  @@index([tenantId])
+  @@index([productId])
+}
+
+model Collection {
+  id          String         @id @default(cuid())
+  tenantId    String
+  slug        String
+  name        String
+  description String?
+  type        CollectionType @default(MANUAL)
+  rules       Json? // p.ej. { type: "SINGLE_ORIGIN", roastLevelGte: 7 }
+  position    Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products CollectionProduct[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model CollectionProduct {
+  collectionId String
+  productId    String
+  position     Int    @default(0)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, productId])
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Pedidos
+// ─────────────────────────────────────────────────────────────────────────
+
+model Order {
+  id            String        @id @default(cuid())
+  tenantId      String
+  customerId    String
+  source        OrderSource   @default(CHECKOUT)
+  status        OrderStatus   @default(RECEIVED)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  shippingAddress Json
+  subtotalCents   Int
+  discountCents   Int     @default(0)
+  shippingCents   Int     @default(0)
+  totalCents      Int
+  discountCode    String?
+  trackingUrl     String?
+  internalNotes   String?
+
+  stripePaymentIntentId String?
+  subscriptionId        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  items        OrderItem[]
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([customerId])
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  tenantId    String
+  orderId     String
+  variantId   String
+  // snapshot — nunca releer del producto/variante
+  productName String
+  variantName String
+  grind       GrindFormat
+  sizeGrams   Int
+  unitCents   Int
+  quantity    Int
+  lineCents   Int
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([orderId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Suscripciones
+// ─────────────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  customerId           String
+  variantId            String
+  frequencyDays        Int
+  status               SubStatus @default(ACTIVE)
+  lastShippedAt        DateTime?
+  nextShipAt           DateTime
+  discountPct          Int       @default(0)
+  shippingAddress      Json?
+  stripeSubscriptionId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  variant  ProductVariant @relation(fields: [variantId], references: [id])
+  orders   Order[]
+  gift     GiftSubscription?
+
+  // Nota: la regla "una sub ACTIVE por (customer, variant)" se aplica con un
+  // índice único parcial creado en migración SQL (WHERE status = 'ACTIVE').
+  @@index([tenantId, status])
+  @@index([customerId])
+  @@index([nextShipAt])
+}
+
+model GiftSubscription {
+  id                   String     @id @default(cuid())
+  tenantId             String
+  buyerEmail           String
+  variantId            String
+  totalShipments       Int
+  shipmentsUsed        Int        @default(0)
+  redemptionCode       String     @unique
+  status               GiftStatus @default(PENDING_ACTIVATION)
+  linkedSubscriptionId String?    @unique
+  message              String?
+  createdAt            DateTime   @default(now())
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
+  subscription Subscription?  @relation(fields: [linkedSubscriptionId], references: [id])
+
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Promociones
+// ─────────────────────────────────────────────────────────────────────────
+
+model DiscountCode {
+  id                String       @id @default(cuid())
+  tenantId          String
+  code              String
+  type              DiscountType @default(PERCENTAGE)
+  value             Int // % o centavos COP según type
+  minSubtotalCents  Int?
+  maxRedemptions    Int?
+  timesRedeemed     Int          @default(0)
+  oneUsePerCustomer Boolean      @default(false)
+  startsAt          DateTime?
+  endsAt            DateTime?
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Reseñas
+// ─────────────────────────────────────────────────────────────────────────
+
+model Review {
+  id                 String       @id @default(cuid())
+  tenantId           String
+  productId          String
+  customerId         String
+  rating             Int // 1..5
+  title              String?
+  body               String
+  status             ReviewStatus @default(PENDING)
+  verifiedSubscriber Boolean      @default(false)
+  reply              String?
+  createdAt          DateTime     @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([productId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Contenido
+// ─────────────────────────────────────────────────────────────────────────
+
+model SiteContent {
+  id        String          @id @default(cuid())
+  tenantId  String
+  kind      SiteContentKind
+  data      Json
+  active    Boolean         @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  position  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind])
+}
+
+model BlogPost {
+  id          String    @id @default(cuid())
+  tenantId    String
+  slug        String
+  title       String
+  excerpt     String?
+  body        String
+  coverUrl    String?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model BrewGuide {
+  id        String   @id @default(cuid())
+  tenantId  String
+  slug      String
+  title     String
+  method    String?
+  body      String
+  coverUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model StoreLocation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  address   String
+  city      String
+  lat       Float?
+  lng       Float?
+  hours     Json?
+  phone     String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Auditoría & Stripe idempotencia
+// ─────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  diff      Json
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity])
+}
+
+model StripeEvent {
+  id          String   @id // event.id de Stripe
+  type        String
+  processedAt DateTime @default(now())
+}
