@@ -8,7 +8,7 @@ export default defineConfig({
   schema: path.join('prisma', 'schema.prisma'),
   migrations: {
     // Conexión directa (no pooled) para migrate/seed.
-    seed: 'tsx prisma/seed.ts',
+    seed: 'node --import tsx prisma/seed.ts',
   },
   // URL usada por la CLI (migrate/db push). En runtime se usa el adapter.
   datasource: {
