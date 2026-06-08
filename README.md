@@ -93,12 +93,25 @@ Todos públicos (solo `TenantGuard`), scope por `X-Tenant-Slug`:
 | POST | `/v1/reviews` | Alta de reseña (queda PENDING) |
 | GET | `/v1/tenants/current` | Branding + features del tenant |
 
+## Endpoints admin (Fase 3, en curso)
+
+Requieren `AuthGuard + TenantGuard + RolesGuard(TENANT_EDITOR+)` y todas las
+mutaciones se auditan (`AuditInterceptor`) y revalidan el front:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET/POST/PATCH | `/v1/admin/products` … `/:id` | CRUD de productos (slug auto) |
+| POST | `/v1/admin/products/:id/archive` | Archivar (sale del storefront) |
+| POST/PATCH/DELETE | `/v1/admin/products/:id/variants` · `/variants/:id` | Variantes |
+| POST/PATCH/DELETE | `/v1/admin/products/:id/images` · `/reorder` · `/images/:id` | Imágenes |
+| GET | `/v1/admin/reviews?status=` | Cola de moderación |
+| POST | `/v1/admin/reviews/:id/approve` · `/reject` · `/reply` | Moderar |
+
 ## Estado
 
 - ✅ **Fase 0** — scaffold, Prisma + schema completo, guards/interceptors,
   módulos esqueleto, auth operador, Swagger, seed, endpoint Inngest.
-- ✅ **Fase 2 (backend)** — endpoints del storefront (tabla arriba),
-  verificados end-to-end.
-- ⬜ **Fase 3** — admin CRUD (productos/variantes/imágenes, colecciones,
-  pedidos, suscripciones, contenido, promos, reseñas, config) + revalidación ISR.
+- ✅ **Fase 2 (backend)** — endpoints del storefront, verificados end-to-end.
+- 🔄 **Fase 3** — ✅ admin productos/variantes/imágenes, ✅ reseñas, ✅ revalidación ISR.
+  ⬜ Falta: colecciones, pedidos, suscripciones, contenido, promos, config, auditoría (vista), roles.
 - ⬜ **Fase 2/4** — Stripe Connect + checkout + motor de suscripciones (Inngest).

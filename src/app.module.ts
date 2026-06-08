@@ -7,6 +7,7 @@ import configuration from './config/configuration';
 import { CTX } from './common/context/request-context';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
+import { RevalidationModule } from './modules/revalidation/revalidation.module';
 import { HealthModule } from './modules/health/health.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -51,6 +52,7 @@ import { InngestModule } from './modules/inngest/inngest.module';
     }),
     PrismaModule,
     CommonModule,
+    RevalidationModule,
     // Features
     HealthModule,
     TenantsModule,
