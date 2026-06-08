@@ -4,6 +4,10 @@ import { ConfigModule } from '@nestjs/config';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 import configuration from './config/configuration';
+import {
+  envValidationOptions,
+  envValidationSchema,
+} from './config/env.validation';
 import { CTX } from './common/context/request-context';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
@@ -27,7 +31,12 @@ import { InngestModule } from './modules/inngest/inngest.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [configuration],
+      validationSchema: envValidationSchema,
+      validationOptions: envValidationOptions,
+    }),
     // AsyncLocalStorage por request: tenantId/userId/role disponibles en servicios.
     ClsModule.forRoot({
       global: true,
