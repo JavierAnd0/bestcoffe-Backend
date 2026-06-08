@@ -11,8 +11,18 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
 
   // El front (Vercel) y subdominios de tenant. En prod restringir por regex.
+  const isProd = process.env.NODE_ENV === 'production';
+  const webAppUrl = process.env.WEB_APP_URL ?? 'http://localhost:3000';
+  const apexHost = new URL(webAppUrl).hostname.split('.').slice(-2).join('.');
+  const apexEscaped = apexHost.replace(/\./g, '\\.');
+  // Permite el apex y cualquier subdominio (multi-tenant por subdominio).
+  const corsRegex = new RegExp(
+    `^https?:\\/\\/([a-z0-9-]+\\.)*${apexEscaped}$`,
+    'i',
+  );
+
   app.enableCors({
-    origin: true,
+    origin: isProd ? [corsRegex] : true,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
   });
