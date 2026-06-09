@@ -20,9 +20,14 @@ async function bootstrap() {
     `^https?:\\/\\/([a-z0-9-]+\\.)*${apexEscaped}$`,
     'i',
   );
+  // Orígenes extra (CSV) — útil para permitir localhost desde prod.
+  const extraOrigins = (process.env.CORS_EXTRA_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   app.enableCors({
-    origin: isProd ? [corsRegex] : true,
+    origin: isProd ? [corsRegex, ...extraOrigins] : true,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
   });

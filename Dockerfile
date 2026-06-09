@@ -23,7 +23,7 @@ ENV PORT=3001
 ENV HOME=/home/app
 ENV XDG_CACHE_HOME=/home/app/.cache
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json pnpm-lock.yaml .npmrc prisma.config.ts ./
 COPY prisma ./prisma

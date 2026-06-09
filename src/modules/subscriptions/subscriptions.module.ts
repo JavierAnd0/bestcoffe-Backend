@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AdminSubscriptionsController } from './admin-subscriptions.controller';
+import { AdminSubscriptionsService } from './admin-subscriptions.service';
 
-/**
- * Módulo esqueleto — se implementa en la fase correspondiente del plan.
- */
-@Module({})
+@Module({
+  controllers: [AdminSubscriptionsController],
+  providers: [AdminSubscriptionsService],
+  exports: [AdminSubscriptionsService],
+})
 export class SubscriptionsModule {}
