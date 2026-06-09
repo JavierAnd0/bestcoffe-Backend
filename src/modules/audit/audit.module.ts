@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AuditController } from './audit.controller';
+import { AuditService } from './audit.service';
 
-/**
- * Módulo esqueleto — se implementa en la fase correspondiente del plan.
- */
-@Module({})
+@Module({
+  controllers: [AuditController],
+  providers: [AuditService],
+  exports: [AuditService],
+})
 export class AuditModule {}

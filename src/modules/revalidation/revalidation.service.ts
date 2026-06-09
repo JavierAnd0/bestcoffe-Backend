@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
  *   collections         → listado de colecciones
  *   collection:<slug>   → colección
  *   content             → home
+ *   settings            → shell del sitio (branding/nombre del tenant)
  *   blog · blog:<slug>  → blog
  */
 @Injectable()

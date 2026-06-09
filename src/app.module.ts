@@ -25,6 +25,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { InngestModule } from './modules/inngest/inngest.module';
@@ -76,6 +77,7 @@ import { InngestModule } from './modules/inngest/inngest.module';
     CustomersModule,
     OrdersModule,
     SubscriptionsModule,
+    PromotionsModule,
     StripeModule,
     AuditModule,
     InngestModule,
