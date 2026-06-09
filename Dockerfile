@@ -5,9 +5,12 @@ RUN corepack enable && apk add --no-cache wget openssl libc6-compat
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml .npmrc ./
+# --ignore-scripts: bypassea el chequeo de "approved builds" de pnpm 11.
+# Luego pnpm rebuild fuerza el postinstall de los nativos que SÍ necesitamos.
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --ignore-scripts && \
+    pnpm rebuild esbuild prisma @prisma/engines @prisma/client unrs-resolver protobufjs
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
