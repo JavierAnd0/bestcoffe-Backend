@@ -1,0 +1,9 @@
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@scarf/scarf'
+  - esbuild
+  - prisma
+  - protobufjs
+  - unrs-resolver
