@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AdminOrdersController } from './admin-orders.controller';
+import { AdminOrdersService } from './admin-orders.service';
 
-/**
- * Módulo esqueleto — se implementa en la fase correspondiente del plan.
- */
-@Module({})
+@Module({
+  controllers: [AdminOrdersController],
+  providers: [AdminOrdersService],
+  exports: [AdminOrdersService],
+})
 export class OrdersModule {}
