@@ -23,14 +23,17 @@ ENV PORT=3001
 ENV HOME=/home/app
 ENV XDG_CACHE_HOME=/home/app/.cache
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY package.json pnpm-lock.yaml .npmrc prisma.config.ts ./
-COPY prisma ./prisma
-
+# Crear user PRIMERO para que los COPY --chown asignen ownership al copiar
+# (evita un chown -R de ~200k archivos que tarda minutos).
 RUN addgroup -S app && adduser -S -h /home/app -G app app && \
     mkdir -p /home/app/.cache && \
-    chown -R app:app /app /home/app
+    chown -R app:app /home/app
+
+COPY --chown=app:app --from=builder /app/node_modules ./node_modules
+COPY --chown=app:app --from=builder /app/dist ./dist
+COPY --chown=app:app package.json pnpm-lock.yaml .npmrc prisma.config.ts ./
+COPY --chown=app:app prisma ./prisma
+
 USER app
 
 EXPOSE 3001
