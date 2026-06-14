@@ -29,6 +29,8 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { InngestModule } from './modules/inngest/inngest.module';
+import { DiscoveryModule } from './modules/discovery/discovery.module';
+import { GiftsModule } from './modules/gifts/gifts.module';
 
 @Module({
   imports: [
@@ -81,6 +83,8 @@ import { InngestModule } from './modules/inngest/inngest.module';
     StripeModule,
     AuditModule,
     InngestModule,
+    DiscoveryModule,
+    GiftsModule,
   ],
 })
 export class AppModule {}
