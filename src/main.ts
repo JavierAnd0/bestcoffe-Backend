@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
@@ -9,6 +10,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   app.useLogger(app.get(Logger));
+  app.use(cookieParser());
 
   // El front (Vercel) y subdominios de tenant. En prod restringir por regex.
   const isProd = process.env.NODE_ENV === 'production';
@@ -30,6 +32,7 @@ async function bootstrap() {
     origin: isProd ? [corsRegex, ...extraOrigins] : true,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Slug'],
+    exposedHeaders: ['Set-Cookie'],
   });
 
   app.useGlobalPipes(

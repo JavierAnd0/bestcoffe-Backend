@@ -10,7 +10,7 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 # Luego pnpm rebuild fuerza el postinstall de los nativos que SÍ necesitamos.
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts && \
-    pnpm rebuild esbuild prisma @prisma/engines @prisma/client unrs-resolver protobufjs
+    pnpm rebuild esbuild prisma @prisma/engines @prisma/client unrs-resolver protobufjs "@node-rs/argon2"
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules

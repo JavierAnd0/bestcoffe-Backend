@@ -20,6 +20,8 @@ export interface CurrentCustomerData {
   tenantId: string;
 }
 
+export const CUSTOMER_COOKIE = 'customer_token';
+
 @Injectable()
 export class CustomerAuthGuard implements CanActivate {
   constructor(
@@ -50,7 +52,12 @@ export class CustomerAuthGuard implements CanActivate {
     }
   }
 
-  private extractToken(req: { headers: Record<string, string> }): string | null {
+  // Cookie HttpOnly primaria; Authorization Bearer como fallback para clientes nativos.
+  private extractToken(req: {
+    cookies?: Record<string, string>;
+    headers: Record<string, string>;
+  }): string | null {
+    if (req.cookies?.[CUSTOMER_COOKIE]) return req.cookies[CUSTOMER_COOKIE];
     const header = req.headers['authorization'];
     if (!header) return null;
     const [type, token] = header.split(' ');

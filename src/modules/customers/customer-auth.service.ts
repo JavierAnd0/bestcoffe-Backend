@@ -2,40 +2,31 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  createHash,
-  randomBytes,
-  scrypt,
-  timingSafeEqual,
-} from 'node:crypto';
-import { promisify } from 'node:util';
+import { createHash, randomBytes } from 'node:crypto';
+import { hash as argon2Hash, verify as argon2Verify } from '@node-rs/argon2';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Resend } from 'resend';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RegisterCustomerDto } from './dto/register-customer.dto';
 import type { VerifyEmailDto } from './dto/verify-email.dto';
 import type { CustomerLoginDto } from './dto/customer-login.dto';
 import type { CustomerJwtPayload } from '../../common/guards/customer-auth.guard';
 
-const scryptAsync = promisify(scrypt);
-
-const SCRYPT_KEYLEN = 64;
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+const SESSION_TTL = '30d';
 
 @Injectable()
 export class CustomerAuthService {
-  private readonly resend: Resend;
+  private readonly logger = new Logger(CustomerAuthService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-  ) {
-    this.resend = new Resend(this.config.get<string>('resend.apiKey'));
-  }
+  ) {}
 
   // ─── Register ────────────────────────────────────────────────────────────
 
@@ -47,7 +38,7 @@ export class CustomerAuthService {
       throw new ConflictException('Ya existe una cuenta con ese correo');
     }
 
-    const passwordHash = await this.hashPassword(dto.password);
+    const passwordHash = await argon2Hash(dto.password);
     const { rawToken, hashedToken } = this.generateVerifyToken();
     const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_MS);
 
@@ -99,7 +90,11 @@ export class CustomerAuthService {
       },
     });
 
-    const accessToken = await this.signToken(customer.id, customer.email, customer.tenantId);
+    const accessToken = await this.signToken(
+      customer.id,
+      customer.email,
+      customer.tenantId,
+    );
     return {
       accessToken,
       customer: { id: customer.id, email: customer.email, name: customer.name },
@@ -113,8 +108,8 @@ export class CustomerAuthService {
       where: { tenantId_email: { tenantId, email: dto.email } },
     });
 
+    // Mismo mensaje para cuenta inexistente y sin contraseña — evita enumerar.
     if (!customer || !customer.passwordHash) {
-      // Misma respuesta para correo inexistente y sin contraseña (evita enumerar cuentas).
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
@@ -124,33 +119,23 @@ export class CustomerAuthService {
       );
     }
 
-    const passwordOk = await this.verifyPassword(dto.password, customer.passwordHash);
+    const passwordOk = await argon2Verify(customer.passwordHash, dto.password);
     if (!passwordOk) {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
-    const accessToken = await this.signToken(customer.id, customer.email, customer.tenantId);
+    const accessToken = await this.signToken(
+      customer.id,
+      customer.email,
+      customer.tenantId,
+    );
     return {
       accessToken,
       customer: { id: customer.id, email: customer.email, name: customer.name },
     };
   }
 
-  // ─── Crypto helpers ──────────────────────────────────────────────────────
-
-  private async hashPassword(password: string): Promise<string> {
-    const salt = randomBytes(16).toString('hex');
-    const derived = (await scryptAsync(password, salt, SCRYPT_KEYLEN)) as Buffer;
-    return `${salt}:${derived.toString('hex')}`;
-  }
-
-  private async verifyPassword(password: string, stored: string): Promise<boolean> {
-    const [salt, hash] = stored.split(':');
-    if (!salt || !hash) return false;
-    const derived = (await scryptAsync(password, salt, SCRYPT_KEYLEN)) as Buffer;
-    const storedBuf = Buffer.from(hash, 'hex');
-    return derived.length === storedBuf.length && timingSafeEqual(derived, storedBuf);
-  }
+  // ─── Helpers ─────────────────────────────────────────────────────────────
 
   private generateVerifyToken(): { rawToken: string; hashedToken: string } {
     const rawToken = randomBytes(32).toString('hex');
@@ -161,14 +146,19 @@ export class CustomerAuthService {
     return createHash('sha256').update(raw).digest('hex');
   }
 
-  private signToken(customerId: string, email: string, tenantId: string): Promise<string> {
+  private signToken(
+    customerId: string,
+    email: string,
+    tenantId: string,
+  ): Promise<string> {
     const payload: CustomerJwtPayload = {
       sub: customerId,
       email,
       tenantId,
       type: 'customer',
     };
-    return this.jwt.signAsync(payload);
+    // Sesiones de cliente duran 30 días (HttpOnly cookie en el navegador).
+    return this.jwt.signAsync(payload, { expiresIn: SESSION_TTL });
   }
 
   // ─── Email ───────────────────────────────────────────────────────────────
@@ -178,20 +168,35 @@ export class CustomerAuthService {
     name: string | null | undefined,
     rawToken: string,
   ): Promise<void> {
-    const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const webUrl =
+      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
     const link = `${webUrl}/cuenta/verificar-email?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    const from = this.config.get<string>('resend.from') ?? 'noreply@example.com';
+
+    const apiKey = this.config.get<string>('resend.apiKey');
+    if (!apiKey) {
+      // Sin RESEND_API_KEY: loguea el link para poder verificar manualmente.
+      this.logger.warn(
+        `[EMAIL NOT SENT — configure RESEND_API_KEY] Verify link for ${email}: ${link}`,
+      );
+      return;
+    }
+
+    // Resend disponible: importar dinámicamente para no fallar si la key no está.
+    const { Resend } = await import('resend');
+    const resend = new Resend(apiKey);
+    const from =
+      this.config.get<string>('resend.from') ?? 'noreply@example.com';
     const greeting = name ? `Hola ${name}` : 'Hola';
 
-    await this.resend.emails.send({
+    await resend.emails.send({
       from,
       to: email,
       subject: 'Activa tu cuenta',
       html: `
         <p>${greeting},</p>
-        <p>Haz clic en el siguiente enlace para verificar tu correo y activar tu cuenta.
+        <p>Haz clic en el siguiente enlace para verificar tu correo.
            El enlace vence en 24 horas.</p>
-        <p><a href="${link}" style="font-weight:bold">Verificar mi correo</a></p>
+        <p><a href="${link}">Verificar mi correo</a></p>
         <p>Si no creaste esta cuenta, ignora este mensaje.</p>
       `,
     });
