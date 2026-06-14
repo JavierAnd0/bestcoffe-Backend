@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { inngest } from '../inngest/inngest.client';
 
@@ -19,6 +20,10 @@ type PaymentIntentLike = {
   id: string;
   client_secret: string | null;
   metadata: Record<string, string>;
+};
+type SetupIntentLike = {
+  metadata: Record<string, string>;
+  payment_method: string | null;
 };
 
 @Injectable()
@@ -80,7 +85,50 @@ export class StripeService {
       case 'payment_intent.payment_failed':
         await this.onPaymentFailed(event);
         break;
+      case 'setup_intent.succeeded':
+        await this.onSetupIntentSucceeded(event);
+        break;
     }
+  }
+
+  /**
+   * Devuelve el Stripe Customer ID del cliente, creándolo en Stripe si no
+   * existe todavía y guardando el nuevo ID en la base de datos.
+   */
+  async createOrGetStripeCustomer(customer: {
+    id: string;
+    email: string;
+    name: string | null;
+    stripeCustomerId: string | null;
+    tenantId: string;
+  }): Promise<string> {
+    if (customer.stripeCustomerId) return customer.stripeCustomerId;
+    const sc = await this.sdk.customers.create({
+      email: customer.email,
+      name: customer.name ?? undefined,
+      metadata: { customerId: customer.id, tenantId: customer.tenantId },
+    });
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: { stripeCustomerId: sc.id },
+    });
+    return sc.id;
+  }
+
+  /**
+   * Crea un SetupIntent para guardar el método de pago del cliente
+   * (off_session, para cargos futuros de suscripción).
+   */
+  async createSetupIntent(
+    stripeCustomerId: string,
+    metadata: Record<string, string>,
+  ): Promise<string> {
+    const si = await this.sdk.setupIntents.create({
+      customer: stripeCustomerId,
+      usage: 'off_session',
+      metadata,
+    });
+    return si.client_secret!;
   }
 
   // ─── Handlers privados ───────────────────────────────────────────────────
@@ -148,6 +196,24 @@ export class StripeService {
       await tx.order.update({
         where: { id: orderId },
         data: { paymentStatus: 'FAILED' },
+      });
+    });
+  }
+
+  private async onSetupIntentSucceeded(event: WebhookEvent): Promise<void> {
+    const si = event.data.object as SetupIntentLike;
+    const subscriptionId = si.metadata['subscriptionId'];
+    if (!subscriptionId) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.stripeEvent.create({ data: { id: event.id, type: event.type } });
+      } catch {
+        return; // idempotencia
+      }
+      await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: { status: SubStatus.ACTIVE },
       });
     });
   }
