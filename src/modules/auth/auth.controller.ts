@@ -22,6 +22,6 @@ export class AuthController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   me(@CurrentUser() user: CurrentUserData) {
-    return user;
+    return this.auth.getMe(user);
   }
 }

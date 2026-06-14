@@ -3,14 +3,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
+import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -43,6 +46,14 @@ export class AuthService {
           role: m.role,
         })),
       },
+    };
+  }
+
+  getMe(user: CurrentUserData) {
+    const ownerEmail = this.config.get<string>('platformOwnerEmail');
+    return {
+      ...user,
+      isPlatformOwner: !!ownerEmail && user.email === ownerEmail,
     };
   }
 

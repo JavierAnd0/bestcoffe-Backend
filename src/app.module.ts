@@ -31,6 +31,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { InngestModule } from './modules/inngest/inngest.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { GiftsModule } from './modules/gifts/gifts.module';
+import { PlatformModule } from './modules/platform/platform.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { GiftsModule } from './modules/gifts/gifts.module';
     InngestModule,
     DiscoveryModule,
     GiftsModule,
+    PlatformModule,
   ],
 })
 export class AppModule {}

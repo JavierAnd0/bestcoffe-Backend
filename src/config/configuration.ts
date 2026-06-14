@@ -2,6 +2,7 @@ export interface AppConfig {
   nodeEnv: string;
   port: number;
   webAppUrl: string;
+  platformOwnerEmail: string;
   databaseUrl: string;
   jwt: {
     secret: string;
@@ -35,6 +36,7 @@ export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3001', 10),
   webAppUrl: process.env.WEB_APP_URL ?? 'http://localhost:3000',
+  platformOwnerEmail: process.env.PLATFORM_OWNER_EMAIL ?? '',
   // Garantizados por envValidationSchema (Joi) en el arranque.
   databaseUrl: process.env.DATABASE_URL as string,
   jwt: {
