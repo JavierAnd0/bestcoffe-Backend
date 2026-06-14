@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 export interface AppConfig {
   nodeEnv: string;
   port: number;
@@ -6,6 +8,7 @@ export interface AppConfig {
   databaseUrl: string;
   jwt: {
     secret: string;
+    customerSecret: string;
     expiresIn: string;
     refreshExpiresIn: string;
   };
@@ -41,6 +44,12 @@ export default (): AppConfig => ({
   databaseUrl: process.env.DATABASE_URL as string,
   jwt: {
     secret: process.env.JWT_SECRET as string,
+    // Secreto distinto para tokens de cliente, derivado del principal via HMAC.
+    // Garantiza que un token de cliente NUNCA valide como token de operador/
+    // plataforma (firmas incompatibles), sin requerir una env var extra.
+    customerSecret: createHmac('sha256', process.env.JWT_SECRET ?? '')
+      .update('bestcoffee:customer-token:v1')
+      .digest('hex'),
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '30d',
   },

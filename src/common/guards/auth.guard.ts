@@ -14,6 +14,7 @@ import { CTX } from '../context/request-context';
 export interface JwtPayload {
   sub: string; // userId
   email: string;
+  type?: 'operator';
 }
 
 /**
@@ -42,13 +43,22 @@ export class AuthGuard implements CanActivate {
     if (!token) throw new UnauthorizedException('Falta token de autenticación');
 
     try {
-      const payload = await this.jwt.verifyAsync<JwtPayload>(token, {
-        secret: this.config.get<string>('jwt.secret'),
-      });
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+        email: string;
+        type?: string;
+      }>(token, { secret: this.config.get<string>('jwt.secret') });
+      // Defensa en profundidad: aunque los tokens de cliente se firman con un
+      // secreto distinto (la firma ya no validaría aquí), rechazamos cualquier
+      // token que no sea de operador en rutas de operador.
+      if (payload.type === 'customer') {
+        throw new UnauthorizedException('Tipo de token incorrecto');
+      }
       req.user = { id: payload.sub, email: payload.email };
       this.cls.set(CTX.USER_ID, payload.sub);
       return true;
-    } catch {
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Token inválido o expirado');
     }
   }

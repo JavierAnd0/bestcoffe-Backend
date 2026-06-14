@@ -158,7 +158,12 @@ export class CustomerAuthService {
       type: 'customer',
     };
     // Sesiones de cliente duran 30 días (HttpOnly cookie en el navegador).
-    return this.jwt.signAsync(payload, { expiresIn: SESSION_TTL });
+    // Firmadas con un secreto separado: un token de cliente nunca podrá
+    // validar como token de operador/plataforma.
+    return this.jwt.signAsync(payload, {
+      secret: this.config.get<string>('jwt.customerSecret'),
+      expiresIn: SESSION_TTL,
+    });
   }
 
   // ─── Email ───────────────────────────────────────────────────────────────

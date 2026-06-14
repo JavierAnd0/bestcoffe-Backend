@@ -133,6 +133,7 @@ export class PlatformTenantsService {
     const payload: JwtPayload = {
       sub: membership.user.id,
       email: membership.user.email,
+      type: 'operator',
     };
     const accessToken = await this.jwt.signAsync(payload, { expiresIn: '2h' });
     return { accessToken };

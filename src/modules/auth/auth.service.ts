@@ -33,6 +33,7 @@ export class AuthService {
     const accessToken = await this.signToken({
       sub: user.id,
       email: user.email,
+      type: 'operator',
     });
 
     return {

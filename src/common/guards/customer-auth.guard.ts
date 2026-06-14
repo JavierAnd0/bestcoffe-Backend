@@ -36,7 +36,7 @@ export class CustomerAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwt.verifyAsync<CustomerJwtPayload>(token, {
-        secret: this.config.get<string>('jwt.secret'),
+        secret: this.config.get<string>('jwt.customerSecret'),
       });
       if (payload.type !== 'customer') {
         throw new Error('tipo de token incorrecto');
