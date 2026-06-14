@@ -190,6 +190,13 @@ model Customer {
   phone            String?
   stripeCustomerId String? // en la cuenta Connect del tenant
   notes            String?
+
+  // Auth de storefront
+  passwordHash         String?
+  emailVerified        Boolean   @default(false)
+  emailVerifyToken     String?   // sha-256 del token raw enviado por correo
+  emailVerifyExpiresAt DateTime?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
