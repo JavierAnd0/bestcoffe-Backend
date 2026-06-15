@@ -28,7 +28,7 @@ type SetupIntentLike = {
 
 @Injectable()
 export class StripeService {
-  private readonly sdk: StripeSDK;
+  private _sdk: StripeSDK | null = null;
   private readonly webhookSecret: string;
   private readonly logger = new Logger(StripeService.name);
 
@@ -36,8 +36,26 @@ export class StripeService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
-    this.sdk = new Stripe(this.config.get<string>('stripe.secretKey') ?? '');
     this.webhookSecret = this.config.get<string>('stripe.webhookSecret') ?? '';
+  }
+
+  /**
+   * Cliente Stripe perezoso. No instanciamos en el constructor porque Stripe v22
+   * lanza si la API key está vacía; eso tumbaría toda la app cuando una tienda
+   * usa solo MercadoPago. Se crea al primer uso y solo falla quien intente cobrar
+   * con Stripe sin configurarlo.
+   */
+  private get sdk(): StripeSDK {
+    if (!this._sdk) {
+      const key = this.config.get<string>('stripe.secretKey');
+      if (!key) {
+        throw new BadRequestException(
+          'Stripe no está configurado para esta plataforma',
+        );
+      }
+      this._sdk = new Stripe(key);
+    }
+    return this._sdk;
   }
 
   /**

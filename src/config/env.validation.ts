@@ -31,9 +31,10 @@ export const envValidationSchema = Joi.object({
     : Joi.string().min(16).allow('').optional(),
   WEB_REVALIDATE_URL: Joi.string().uri().allow('').optional(),
 
-  // Integraciones — requeridas solo en producción
-  STRIPE_SECRET_KEY: isProd ? Joi.string().required() : Joi.string().allow('').optional(),
-  STRIPE_WEBHOOK_SECRET: isProd ? Joi.string().required() : Joi.string().allow('').optional(),
+  // Pasarelas de pago — opcionales: una tienda puede usar solo MercadoPago.
+  // El servicio respectivo falla con 400 si se intenta cobrar sin configurarlo.
+  STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
+  STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   STRIPE_PLATFORM_WEBHOOK_SECRET: Joi.string().allow('').optional(),
 
   // MercadoPago (marketplace OAuth) — opcionales; cada tienda conecta su cuenta
