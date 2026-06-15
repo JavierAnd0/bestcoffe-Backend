@@ -52,6 +52,18 @@ async function main() {
     create: { userId: owner.id, tenantId: tenant.id, role: 'TENANT_OWNER' },
   });
 
+  // Operador real para pruebas (recibe magic link en su bandeja)
+  const javier = await prisma.user.upsert({
+    where: { email: 'logijavier@gmail.com' },
+    update: {},
+    create: { email: 'logijavier@gmail.com', name: 'Javier' },
+  });
+  await prisma.tenantMembership.upsert({
+    where: { userId_tenantId: { userId: javier.id, tenantId: tenant.id } },
+    update: { role: 'TENANT_OWNER' },
+    create: { userId: javier.id, tenantId: tenant.id, role: 'TENANT_OWNER' },
+  });
+
   // ── Productos ───────────────────────────────────────────────────────────
   const productsSeed = [
     {
