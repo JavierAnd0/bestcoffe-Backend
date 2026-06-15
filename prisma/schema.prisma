@@ -180,6 +180,10 @@ model User {
   name      String?
   createdAt DateTime @default(now())
 
+  // Magic link de login (sha-256 del token raw enviado por correo, single-use)
+  loginToken          String?
+  loginTokenExpiresAt DateTime?
+
   memberships TenantMembership[]
 }
 
