@@ -6,7 +6,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
-const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min
+const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min (validez del enlace)
+const SESSION_TTL = '7d'; // duración de la sesión de operador tras el login
 const GENERIC_RESPONSE = {
   message:
     'Si el correo corresponde a un operador, te enviamos un enlace de acceso.',
@@ -99,6 +100,8 @@ export class AuthService {
     };
   }
 
+  // Nota: getMe y verifyMagicLink usan signToken; este firma con SESSION_TTL.
+
   getMe(user: CurrentUserData) {
     const ownerEmail = this.config.get<string>('platformOwnerEmail');
     return {
@@ -108,8 +111,10 @@ export class AuthService {
   }
 
   signToken(payload: JwtPayload): Promise<string> {
-    // secret + expiresIn vienen del JwtModule (CommonModule).
-    return this.jwt.signAsync(payload);
+    // El JwtModule global usa expiresIn corto (15m, pensado para access tokens
+    // con refresh). La sesión de operador no tiene refresh todavía, así que
+    // firmamos con una duración de sesión más larga.
+    return this.jwt.signAsync(payload, { expiresIn: SESSION_TTL });
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -129,7 +134,7 @@ export class AuthService {
     rawToken: string,
   ): Promise<void> {
     const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
-    const link = `${webUrl}/admin/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
+    const link = `${webUrl}/acceso/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
 
     const apiKey = this.config.get<string>('resend.apiKey');
     if (!apiKey) {
