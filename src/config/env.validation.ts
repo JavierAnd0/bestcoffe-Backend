@@ -35,6 +35,14 @@ export const envValidationSchema = Joi.object({
   STRIPE_SECRET_KEY: isProd ? Joi.string().required() : Joi.string().allow('').optional(),
   STRIPE_WEBHOOK_SECRET: isProd ? Joi.string().required() : Joi.string().allow('').optional(),
   STRIPE_PLATFORM_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+
+  // MercadoPago (marketplace OAuth) — opcionales; cada tienda conecta su cuenta
+  MP_CLIENT_ID: Joi.string().allow('').optional(),
+  MP_CLIENT_SECRET: Joi.string().allow('').optional(),
+  MP_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+  MP_REDIRECT_URI: Joi.string().uri().allow('').optional(),
+  MP_MARKETPLACE_FEE_PCT: Joi.number().min(0).max(100).optional(),
+
   RESEND_API_KEY: Joi.string().allow('').optional(),
   EMAIL_FROM: Joi.string().allow('').optional(),
   BLOB_READ_WRITE_TOKEN: Joi.string().allow('').optional(),

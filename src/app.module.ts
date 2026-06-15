@@ -27,6 +27,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
+import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { InngestModule } from './modules/inngest/inngest.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
@@ -82,6 +83,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     SubscriptionsModule,
     PromotionsModule,
     StripeModule,
+    MercadoPagoModule,
     AuditModule,
     InngestModule,
     DiscoveryModule,

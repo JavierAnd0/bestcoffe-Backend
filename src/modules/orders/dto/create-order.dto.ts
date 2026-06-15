@@ -2,15 +2,50 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CartItemDto, PurchaseMode } from '../../cart/dto/price-cart.dto';
+
+/**
+ * Datos del pago transparente (Checkout API de MercadoPago). El frontend
+ * tokeniza la tarjeta con MercadoPago.js usando la public key del vendedor y
+ * envía aquí el token resultante. Obligatorio solo cuando la tienda usa
+ * MercadoPago como proveedor (se valida en el checkout).
+ */
+export class MpPaymentInputDto {
+  @ApiProperty({ description: 'Card token generado por MercadoPago.js' })
+  @IsString()
+  cardToken!: string;
+
+  @ApiProperty({ example: 'visa' })
+  @IsString()
+  paymentMethodId!: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  installments?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  issuerId?: string;
+
+  @ApiPropertyOptional({ description: 'Email del pagador; por defecto el del cliente' })
+  @IsOptional()
+  @IsEmail()
+  payerEmail?: string;
+}
 
 export class ShippingAddressDto {
   @ApiProperty({ example: 'Calle 123 # 45-67' })
@@ -77,4 +112,10 @@ export class CreateOrderDto {
   @ValidateNested()
   @Type(() => ShippingAddressDto)
   shippingAddress!: ShippingAddressDto;
+
+  @ApiPropertyOptional({ type: MpPaymentInputDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MpPaymentInputDto)
+  payment?: MpPaymentInputDto;
 }

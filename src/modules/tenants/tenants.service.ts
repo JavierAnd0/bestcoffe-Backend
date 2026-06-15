@@ -16,6 +16,10 @@ export class TenantsService {
         tier: true,
         features: true,
         branding: true,
+        // Checkout: el storefront necesita saber qué pasarela usar y, para
+        // MercadoPago, la public key del vendedor para tokenizar la tarjeta.
+        paymentProvider: true,
+        mpPublicKey: true,
       },
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');

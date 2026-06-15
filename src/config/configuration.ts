@@ -21,6 +21,13 @@ export interface AppConfig {
     webhookSecret: string;
     platformWebhookSecret: string;
   };
+  mercadopago: {
+    clientId: string;
+    clientSecret: string;
+    webhookSecret: string;
+    redirectUri: string;
+    marketplaceFeePct: number;
+  };
   resend: {
     apiKey: string;
     from: string;
@@ -61,6 +68,16 @@ export default (): AppConfig => ({
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
     platformWebhookSecret: process.env.STRIPE_PLATFORM_WEBHOOK_SECRET ?? '',
+  },
+  mercadopago: {
+    // Credenciales de TU aplicación MercadoPago (marketplace). Las tiendas
+    // conectan su cuenta vía OAuth; nunca guardamos credenciales de la app
+    // del vendedor, solo sus tokens OAuth.
+    clientId: process.env.MP_CLIENT_ID ?? '',
+    clientSecret: process.env.MP_CLIENT_SECRET ?? '',
+    webhookSecret: process.env.MP_WEBHOOK_SECRET ?? '',
+    redirectUri: process.env.MP_REDIRECT_URI ?? '',
+    marketplaceFeePct: parseFloat(process.env.MP_MARKETPLACE_FEE_PCT ?? '0'),
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY ?? '',

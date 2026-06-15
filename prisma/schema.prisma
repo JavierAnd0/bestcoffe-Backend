@@ -77,6 +77,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentProvider {
+  STRIPE
+  MERCADOPAGO
+}
+
 enum SubStatus {
   ACTIVE
   PAUSED
@@ -114,14 +119,27 @@ enum SiteContentKind {
 // ─────────────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id                     String  @id @default(cuid())
-  slug                   String  @unique
+  id                     String          @id @default(cuid())
+  slug                   String          @unique
   name                   String
   stripeConnectAccountId String?
   platformSubscriptionId String?
-  tier                   Tier    @default(STARTER)
-  features               Json    @default("{}")
-  branding               Json    @default("{}")
+  tier                   Tier            @default(STARTER)
+  features               Json            @default("{}")
+  branding               Json            @default("{}")
+
+  // Pasarela de pago activa de la tienda. STRIPE y MERCADOPAGO coexisten;
+  // el checkout decide según este campo.
+  paymentProvider PaymentProvider @default(STRIPE)
+
+  // MercadoPago — credenciales del vendedor obtenidas vía OAuth (marketplace).
+  // El access token se usa para crear pagos en nombre de la tienda + comisión.
+  mpUserId         String?
+  mpAccessToken    String?
+  mpRefreshToken   String?
+  mpPublicKey      String? // se expone al frontend para tokenizar la tarjeta
+  mpTokenExpiresAt DateTime?
+  mpConnected      Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -350,6 +368,7 @@ model Order {
   internalNotes   String?
 
   stripePaymentIntentId String?
+  mpPaymentId           String?
   subscriptionId        String?
 
   createdAt DateTime @default(now())
@@ -582,6 +601,12 @@ model AuditLog {
 
 model StripeEvent {
   id          String   @id // event.id de Stripe
+  type        String
+  processedAt DateTime @default(now())
+}
+
+model MercadoPagoEvent {
+  id          String   @id // id de la notificación (data.id) de MercadoPago
   type        String
   processedAt DateTime @default(now())
 }
