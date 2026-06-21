@@ -1,6 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsObject, IsOptional } from 'class-validator';
-import { Tier } from '@prisma/client';
+import {
+  IsIn,
+  IsISO8601,
+  IsObject,
+  IsOptional,
+} from 'class-validator';
+import {
+  Tier,
+  TenantBillingType,
+  TenantBillingStatus,
+  TenantBillingCycle,
+} from '@prisma/client';
 
 export class UpdatePlatformTenantDto {
   @ApiPropertyOptional({ enum: Tier })
@@ -17,4 +27,35 @@ export class UpdatePlatformTenantDto {
   @IsOptional()
   @IsObject()
   branding?: Record<string, unknown>;
+
+  // ── Facturación (gestión manual) ──────────────────────────────────────────
+  @ApiPropertyOptional({ enum: TenantBillingType })
+  @IsOptional()
+  @IsIn(Object.values(TenantBillingType))
+  billingType?: TenantBillingType;
+
+  @ApiPropertyOptional({ enum: TenantBillingStatus })
+  @IsOptional()
+  @IsIn(Object.values(TenantBillingStatus))
+  billingStatus?: TenantBillingStatus;
+
+  @ApiPropertyOptional({ enum: TenantBillingCycle, nullable: true })
+  @IsOptional()
+  @IsIn([...Object.values(TenantBillingCycle), null])
+  billingCycle?: TenantBillingCycle | null;
+
+  @ApiPropertyOptional({ description: 'ISO date — inicio de suscripción o pago único', nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  billingStartedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'ISO date — próxima renovación o fin de mantenimiento', nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  currentPeriodEnd?: string | null;
+
+  @ApiPropertyOptional({ description: 'ISO date — cancelación', nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  cancelledAt?: string | null;
 }

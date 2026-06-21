@@ -19,6 +19,27 @@ enum Tier {
   BUSINESS
 }
 
+// Cómo paga el tenant la plataforma: suscripción recurrente o pago único
+// (normalmente + mantenimiento). Es un acuerdo comercial gestionado a mano por
+// el superadmin; no hay pasarela de pago de plataforma todavía.
+enum TenantBillingType {
+  SUBSCRIPTION
+  ONE_TIME
+}
+
+enum TenantBillingStatus {
+  ACTIVE // vigente / al día
+  PAST_DUE // pago pendiente o vencido
+  CANCELLED // cancelado por el cliente
+  INACTIVE // sin activar / suspendido
+}
+
+enum TenantBillingCycle {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
 enum OperatorRole {
   PLATFORM_OWNER
   TENANT_OWNER
@@ -127,6 +148,14 @@ model Tenant {
   tier                   Tier            @default(STARTER)
   features               Json            @default("{}")
   branding               Json            @default("{}")
+
+  // ── Facturación del tenant hacia la plataforma (gestión manual) ──────────
+  billingType      TenantBillingType   @default(SUBSCRIPTION)
+  billingStatus    TenantBillingStatus @default(ACTIVE)
+  billingCycle     TenantBillingCycle? // null cuando billingType = ONE_TIME
+  billingStartedAt DateTime? // inicio de la suscripción o fecha del pago único
+  currentPeriodEnd DateTime? // próxima renovación, o fin de mantenimiento
+  cancelledAt      DateTime? // cuándo se canceló (si aplica)
 
   // Pasarela de pago activa de la tienda. STRIPE y MERCADOPAGO coexisten;
   // el checkout decide según este campo.

@@ -33,6 +33,10 @@ export class PlatformTenantsService {
         name: true,
         tier: true,
         createdAt: true,
+        billingType: true,
+        billingStatus: true,
+        billingCycle: true,
+        currentPeriodEnd: true,
         _count: {
           select: { memberships: true, orders: true, customers: true },
         },
@@ -54,6 +58,9 @@ export class PlatformTenantsService {
           name: dto.name,
           tier: dto.tier ?? Tier.STARTER,
           features: (dto.features as object) ?? {},
+          // Arranca la facturación en la fecha de alta; el superadmin ajusta
+          // modalidad/ciclo/fechas después desde el panel.
+          billingStartedAt: new Date(),
         },
       });
 
@@ -124,6 +131,10 @@ export class PlatformTenantsService {
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
 
+    // Fechas: llegan como ISO string o null (para limpiar). `undefined` = no tocar.
+    const toDate = (v: string | null | undefined) =>
+      v === undefined ? undefined : v === null ? null : new Date(v);
+
     return this.prisma.tenant.update({
       where: { id },
       data: {
@@ -133,6 +144,19 @@ export class PlatformTenantsService {
         }),
         ...(dto.branding && {
           branding: { ...(tenant.branding as object), ...dto.branding } as Prisma.InputJsonValue,
+        }),
+        // Facturación
+        ...(dto.billingType && { billingType: dto.billingType }),
+        ...(dto.billingStatus && { billingStatus: dto.billingStatus }),
+        ...(dto.billingCycle !== undefined && { billingCycle: dto.billingCycle }),
+        ...(dto.billingStartedAt !== undefined && {
+          billingStartedAt: toDate(dto.billingStartedAt),
+        }),
+        ...(dto.currentPeriodEnd !== undefined && {
+          currentPeriodEnd: toDate(dto.currentPeriodEnd),
+        }),
+        ...(dto.cancelledAt !== undefined && {
+          cancelledAt: toDate(dto.cancelledAt),
         }),
       },
     });
