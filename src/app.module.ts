@@ -33,6 +33,7 @@ import { InngestModule } from './modules/inngest/inngest.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
 import { GiftsModule } from './modules/gifts/gifts.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { PlatformModule } from './modules/platform/platform.module';
     DiscoveryModule,
     GiftsModule,
     PlatformModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

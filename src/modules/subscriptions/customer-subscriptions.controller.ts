@@ -13,6 +13,8 @@ import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CustomerAuthGuard } from '../../common/guards/customer-auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import type { CurrentCustomerData } from '../../common/guards/customer-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import { CustomerSubscriptionsService } from './customer-subscriptions.service';
@@ -32,7 +34,7 @@ class ListMySubsDto {
 @ApiTags('subscriptions')
 @ApiBearerAuth()
 @Controller('v1/subscriptions')
-@UseGuards(CustomerAuthGuard)
+@UseGuards(CustomerAuthGuard, FeatureGuard)
 export class CustomerSubscriptionsController {
   constructor(private readonly subs: CustomerSubscriptionsService) {}
 
@@ -53,6 +55,7 @@ export class CustomerSubscriptionsController {
   }
 
   @Post()
+  @RequireFeature('subscriptions')
   create(
     @CurrentCustomer() customer: CurrentCustomerData,
     @Body() dto: CreateSubscriptionDto,

@@ -1,6 +1,8 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CustomerAuthGuard } from '../../common/guards/customer-auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
 import type { CurrentCustomerData } from '../../common/guards/customer-auth.guard';
 import { CheckoutService } from './checkout.service';
@@ -19,7 +21,8 @@ export class CheckoutController {
    * la orden como PAID y decrementa stock.
    */
   @Post()
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
+  @RequireFeature('checkout')
   create(
     @CurrentCustomer() customer: CurrentCustomerData,
     @Body() dto: CreateOrderDto,

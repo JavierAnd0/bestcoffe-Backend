@@ -3,6 +3,8 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { CUSTOMER_COOKIE } from '../../common/guards/customer-auth.guard';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
@@ -32,7 +34,8 @@ export class CustomerAuthController {
   /** Crea la cuenta y envía el correo de verificación. */
   @Post('register')
   @Public()
-  @UseGuards(TenantGuard)
+  @UseGuards(TenantGuard, FeatureGuard)
+  @RequireFeature('customerAccounts')
   register(
     @CurrentTenant() tenant: CurrentTenantData,
     @Body() dto: RegisterCustomerDto,
@@ -58,7 +61,8 @@ export class CustomerAuthController {
   /** Login con email + contraseña. Requiere email verificado. */
   @Post('login')
   @Public()
-  @UseGuards(TenantGuard)
+  @UseGuards(TenantGuard, FeatureGuard)
+  @RequireFeature('customerAccounts')
   async login(
     @CurrentTenant() tenant: CurrentTenantData,
     @Body() dto: CustomerLoginDto,

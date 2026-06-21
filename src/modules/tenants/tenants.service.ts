@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveFeatures } from '../../common/features/tier-features';
 
 @Injectable()
 export class TenantsService {
@@ -23,6 +24,10 @@ export class TenantsService {
       },
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
-    return tenant;
+
+    // `features` resueltas = base del tier + overrides del tenant. El storefront
+    // las usa para mostrar/ocultar carrito, login, suscripciones, etc.
+    const { features: overrides, ...rest } = tenant;
+    return { ...rest, features: resolveFeatures(tenant.tier, overrides) };
   }
 }

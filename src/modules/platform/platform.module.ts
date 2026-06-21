@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PlatformTenantsController } from './platform-tenants.controller';
+import { PlatformTiersController } from './platform-tiers.controller';
 import { PlatformTenantsService } from './platform-tenants.service';
 
 @Module({
@@ -14,7 +15,7 @@ import { PlatformTenantsService } from './platform-tenants.service';
       inject: [ConfigService],
     }),
   ],
-  controllers: [PlatformTenantsController],
+  controllers: [PlatformTenantsController, PlatformTiersController],
   providers: [PlatformTenantsService],
 })
 export class PlatformModule {}

@@ -1,9 +1,12 @@
 import {
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveFeatures } from '../../common/features/tier-features';
 import { RevalidationService } from '../revalidation/revalidation.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -47,6 +50,7 @@ export class AdminProductsService {
   }
 
   async create(tenantId: string, tenantSlug: string, dto: CreateProductDto) {
+    await this.assertProductQuota(tenantId);
     const slug = dto.slug ?? (await this.uniqueSlug(tenantId, dto.name));
 
     const product = await this.prisma.product.create({
@@ -266,6 +270,36 @@ export class AdminProductsService {
     });
     if (!product) throw new NotFoundException('Producto no encontrado');
     return product;
+  }
+
+  /**
+   * Aplica el límite de productos del tier (maxProducts; -1 = ilimitado).
+   * Responde 402 si el tenant llegó al tope de su plan.
+   */
+  private async assertProductQuota(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { tier: true, features: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    const { maxProducts } = resolveFeatures(tenant.tier, tenant.features);
+    if (maxProducts < 0) return; // ilimitado
+
+    const count = await this.prisma.product.count({ where: { tenantId } });
+    if (count >= maxProducts) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.PAYMENT_REQUIRED,
+          error: 'Límite de productos alcanzado',
+          message: `Tu plan (${tenant.tier}) permite hasta ${maxProducts} productos. Sube de plan para agregar más.`,
+          feature: 'maxProducts',
+          currentTier: tenant.tier,
+          limit: maxProducts,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
+    }
   }
 
   /** Solo revalida si el producto está visible en el storefront. */
