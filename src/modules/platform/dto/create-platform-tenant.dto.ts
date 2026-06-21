@@ -1,12 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsEmail,
   IsFQDN,
   IsIn,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
 import { Tier } from '@prisma/client';
 
@@ -43,4 +47,19 @@ export class CreatePlatformTenantDto {
   @IsOptional()
   @IsObject()
   features?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Habilita el cobro por comisión (solo PRO/BUSINESS). Solo puede definirse al crear.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  commissionEnabled?: boolean;
+
+  @ApiPropertyOptional({ description: '% de comisión inicial (si commissionEnabled)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionPct?: number;
 }

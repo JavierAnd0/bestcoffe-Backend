@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -37,6 +38,11 @@ export class PlatformTenantsService {
         billingStatus: true,
         billingCycle: true,
         currentPeriodEnd: true,
+        hasMaintenance: true,
+        billingAmountCents: true,
+        commissionEnabled: true,
+        commissionPct: true,
+        pendingCommissionPct: true,
         _count: {
           select: { memberships: true, orders: true, customers: true },
         },
@@ -51,16 +57,35 @@ export class PlatformTenantsService {
     });
     if (existing) throw new ConflictException(`El slug "${dto.slug}" ya está en uso`);
 
+    const tier = dto.tier ?? Tier.STARTER;
+
+    // La comisión solo puede habilitarse al crear, y solo en PRO/BUSINESS.
+    if (dto.commissionEnabled && tier === Tier.STARTER) {
+      throw new BadRequestException(
+        'La comisión por ventas solo está disponible en planes PRO y BUSINESS',
+      );
+    }
+    const commissionEnabled = dto.commissionEnabled ?? false;
+    // Si se habilita con un % inicial, arranca directamente en modalidad comisión.
+    const startsOnCommission =
+      commissionEnabled && dto.commissionPct != null;
+
     const tenant = await this.prisma.$transaction(async (tx) => {
       const t = await tx.tenant.create({
         data: {
           slug: dto.slug,
           name: dto.name,
-          tier: dto.tier ?? Tier.STARTER,
+          tier,
           features: (dto.features as object) ?? {},
           // Arranca la facturación en la fecha de alta; el superadmin ajusta
           // modalidad/ciclo/fechas después desde el panel.
           billingStartedAt: new Date(),
+          commissionEnabled,
+          ...(startsOnCommission && {
+            billingType: 'COMMISSION',
+            commissionPct: dto.commissionPct,
+            commissionAcceptedAt: new Date(),
+          }),
         },
       });
 
@@ -127,15 +152,58 @@ export class PlatformTenantsService {
   async update(id: string, dto: UpdatePlatformTenantDto) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },
-      select: { id: true, features: true, branding: true },
+      select: {
+        id: true,
+        name: true,
+        tier: true,
+        features: true,
+        branding: true,
+        billingType: true,
+        commissionEnabled: true,
+        commissionPct: true,
+      },
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
+
+    const effectiveTier = dto.tier ?? tenant.tier;
+    const effectiveType = dto.billingType ?? tenant.billingType;
+    if (effectiveType === 'COMMISSION') {
+      // La comisión debe haberse habilitado al crear el tenant…
+      if (!tenant.commissionEnabled) {
+        throw new BadRequestException(
+          'La comisión por ventas solo puede habilitarse al crear el tenant',
+        );
+      }
+      // …y solo aplica a PRO/BUSINESS.
+      if (effectiveTier === Tier.STARTER) {
+        throw new BadRequestException(
+          'La comisión por ventas solo está disponible en planes PRO y BUSINESS',
+        );
+      }
+    }
+
+    // Comisión: el primer % se fija directo; cambiar uno existente crea una
+    // propuesta que el dueño del tenant debe aceptar (el % activo no cambia).
+    const commissionData: Prisma.TenantUpdateInput = {};
+    let proposal: { oldPct: number; newPct: number } | null = null;
+    if (dto.commissionPct !== undefined) {
+      if (tenant.commissionPct == null) {
+        commissionData.commissionPct = dto.commissionPct;
+        commissionData.commissionAcceptedAt = new Date();
+        commissionData.pendingCommissionPct = null;
+        commissionData.commissionPctProposedAt = null;
+      } else if (dto.commissionPct !== tenant.commissionPct) {
+        commissionData.pendingCommissionPct = dto.commissionPct;
+        commissionData.commissionPctProposedAt = new Date();
+        proposal = { oldPct: tenant.commissionPct, newPct: dto.commissionPct };
+      }
+    }
 
     // Fechas: llegan como ISO string o null (para limpiar). `undefined` = no tocar.
     const toDate = (v: string | null | undefined) =>
       v === undefined ? undefined : v === null ? null : new Date(v);
 
-    return this.prisma.tenant.update({
+    const updated = await this.prisma.tenant.update({
       where: { id },
       data: {
         ...(dto.tier && { tier: dto.tier }),
@@ -158,8 +226,53 @@ export class PlatformTenantsService {
         ...(dto.cancelledAt !== undefined && {
           cancelledAt: toDate(dto.cancelledAt),
         }),
+        ...(dto.hasMaintenance !== undefined && {
+          hasMaintenance: dto.hasMaintenance,
+        }),
+        ...(dto.billingAmountCents !== undefined && {
+          billingAmountCents: dto.billingAmountCents,
+        }),
+        ...commissionData,
       },
     });
+
+    // Notificar al dueño del tenant si hay un cambio de % que debe aprobar.
+    if (proposal) {
+      await this.notifyCommissionProposal(id, tenant.name, proposal);
+    }
+
+    return updated;
+  }
+
+  /** Envía al dueño del tenant la propuesta de cambio de comisión (best-effort). */
+  private async notifyCommissionProposal(
+    tenantId: string,
+    storeName: string,
+    proposal: { oldPct: number; newPct: number },
+  ) {
+    const owner = await this.prisma.tenantMembership.findFirst({
+      where: { tenantId, role: 'TENANT_OWNER' },
+      include: { user: { select: { email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!owner) return;
+
+    const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const panelUrl = `${webUrl}/admin`;
+    try {
+      await this.mail.sendCommissionChangeProposal(
+        owner.user.email,
+        storeName,
+        proposal.oldPct,
+        proposal.newPct,
+        panelUrl,
+      );
+    } catch (err) {
+      this.logger.error(
+        `No se pudo notificar el cambio de comisión a ${owner.user.email}`,
+        err as Error,
+      );
+    }
   }
 
   async impersonate(id: string): Promise<{ accessToken: string }> {

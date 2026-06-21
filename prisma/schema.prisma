@@ -25,6 +25,7 @@ enum Tier {
 enum TenantBillingType {
   SUBSCRIPTION
   ONE_TIME
+  COMMISSION // % sobre ventas — solo PRO/BUSINESS
 }
 
 enum TenantBillingStatus {
@@ -152,10 +153,26 @@ model Tenant {
   // ── Facturación del tenant hacia la plataforma (gestión manual) ──────────
   billingType      TenantBillingType   @default(SUBSCRIPTION)
   billingStatus    TenantBillingStatus @default(ACTIVE)
-  billingCycle     TenantBillingCycle? // null cuando billingType = ONE_TIME
+  billingCycle     TenantBillingCycle? // frecuencia del cobro recurrente
   billingStartedAt DateTime? // inicio de la suscripción o fecha del pago único
-  currentPeriodEnd DateTime? // próxima renovación, o fin de mantenimiento
+  currentPeriodEnd DateTime? // próximo cobro (suscripción o mantenimiento)
   cancelledAt      DateTime? // cuándo se canceló (si aplica)
+
+  // Pago único: ¿además se cobra un mantenimiento recurrente? (en suscripción
+  // el cobro recurrente es implícito). Monto del cobro en centavos COP.
+  hasMaintenance     Boolean @default(false)
+  billingAmountCents Int?
+
+  // Comisión por ventas (billingType = COMMISSION). Cambiar el % requiere el
+  // consentimiento del dueño del tenant: la propuesta vive en pendingCommissionPct
+  // hasta que se acepta (entonces pasa a commissionPct).
+  // `commissionEnabled` se fija SOLO al crear el tenant: si no se habilita ahí,
+  // la modalidad COMMISSION no puede usarse nunca (aunque sí cambiar a otras).
+  commissionEnabled       Boolean   @default(false)
+  commissionPct           Float? // % activo acordado
+  pendingCommissionPct    Float? // % propuesto, esperando aceptación
+  commissionPctProposedAt DateTime?
+  commissionAcceptedAt    DateTime? // rastro de consentimiento del % vigente
 
   // Pasarela de pago activa de la tienda. STRIPE y MERCADOPAGO coexisten;
   // el checkout decide según este campo.

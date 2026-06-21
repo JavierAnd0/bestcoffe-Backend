@@ -82,6 +82,34 @@ export class MailService {
     });
   }
 
+  /**
+   * Propuesta de cambio de comisión: el dueño del tenant debe aceptarla en su
+   * panel antes de que entre en vigor.
+   */
+  async sendCommissionChangeProposal(
+    to: string,
+    storeName: string,
+    oldPct: number,
+    newPct: number,
+    panelUrl: string,
+  ): Promise<void> {
+    await this.send({
+      to,
+      subject: `Cambio en tu comisión — ${storeName}`,
+      fallbackLog: `Commission proposal ${to} (${storeName}): ${oldPct}% → ${newPct}%. Panel: ${panelUrl}`,
+      html: `
+        <p>Hola,</p>
+        <p>Proponemos ajustar la comisión por ventas de tu tienda
+           <strong>${storeName}</strong>:</p>
+        <p style="font-size:18px"><strong>${oldPct}% → ${newPct}%</strong></p>
+        <p>Este cambio <strong>no aplica</strong> hasta que lo apruebes. Entra a tu
+           panel para revisarlo y aceptarlo o rechazarlo.</p>
+        <p><a href="${panelUrl}">Revisar en mi panel</a></p>
+        <p>Si no reconoces esta solicitud, ignórala: tu comisión actual seguirá vigente.</p>
+      `,
+    });
+  }
+
   /** Bienvenida al dueño de una tienda recién creada por el superadmin. */
   async sendTenantWelcome(
     to: string,

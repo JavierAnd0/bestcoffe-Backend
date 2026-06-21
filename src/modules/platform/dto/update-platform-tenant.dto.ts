@@ -1,9 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsIn,
+  IsInt,
   IsISO8601,
+  IsNumber,
   IsObject,
   IsOptional,
+  Max,
+  Min,
 } from 'class-validator';
 import {
   Tier,
@@ -58,4 +63,22 @@ export class UpdatePlatformTenantDto {
   @IsOptional()
   @IsISO8601()
   cancelledAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Pago único: ¿cobra mantenimiento recurrente?' })
+  @IsOptional()
+  @IsBoolean()
+  hasMaintenance?: boolean;
+
+  @ApiPropertyOptional({ description: 'Monto del cobro en centavos COP', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  billingAmountCents?: number | null;
+
+  @ApiPropertyOptional({ description: '% de comisión sobre ventas (0–100)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  commissionPct?: number;
 }
