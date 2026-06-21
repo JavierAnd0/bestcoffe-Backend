@@ -86,12 +86,16 @@ export class AuthService {
       type: 'operator',
     });
 
+    const ownerEmail = this.config.get<string>('platformOwnerEmail');
+    const isPlatformOwner = !!ownerEmail && user.email === ownerEmail;
+
     return {
       accessToken,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        isPlatformOwner,
         tenants: user.memberships.map((m) => ({
           slug: m.tenant.slug,
           role: m.role,
