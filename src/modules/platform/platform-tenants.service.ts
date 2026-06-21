@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Tier } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { CreatePlatformTenantDto } from './dto/create-platform-tenant.dto';
 import { UpdatePlatformTenantDto } from './dto/update-platform-tenant.dto';
@@ -20,6 +21,7 @@ export class PlatformTenantsService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   async list() {
@@ -75,12 +77,26 @@ export class PlatformTenantsService {
       return { ...t, owner };
     });
 
-    // Loguear magic link de bienvenida hasta que el sistema de magic link de
-    // operadores esté listo — el operador puede usar el flujo de login normal.
-    const loginUrl = `${this.config.get<string>('webAppUrl')}/login?email=${encodeURIComponent(dto.ownerEmail)}`;
-    this.logger.warn(
-      `[NUEVO TENANT] "${dto.slug}" creado. Owner: ${dto.ownerEmail}. Login: ${loginUrl}`,
-    );
+    // Correo de bienvenida: el dueño accede por magic link de operador en
+    // /acceso (prellenamos su email). No firmamos un token aquí para evitar que
+    // expire antes de que abra el correo — él solicita el enlace al entrar.
+    const webUrl =
+      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const accessUrl = `${webUrl}/acceso?email=${encodeURIComponent(dto.ownerEmail)}`;
+    try {
+      await this.mail.sendTenantWelcome(
+        dto.ownerEmail,
+        dto.ownerName,
+        dto.name,
+        accessUrl,
+      );
+    } catch (err) {
+      // El alta del tenant no debe fallar si el correo no sale.
+      this.logger.error(
+        `No se pudo enviar el correo de bienvenida a ${dto.ownerEmail}`,
+        err as Error,
+      );
+    }
 
     return tenant;
   }

@@ -1,8 +1,9 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
@@ -15,12 +16,11 @@ const GENERIC_RESPONSE = {
 
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -139,32 +139,6 @@ export class AuthService {
   ): Promise<void> {
     const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
     const link = `${webUrl}/acceso/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
-
-    const apiKey = this.config.get<string>('resend.apiKey');
-    if (!apiKey) {
-      // Sin RESEND_API_KEY: loguea el link para poder acceder manualmente.
-      this.logger.warn(
-        `[EMAIL NOT SENT — configure RESEND_API_KEY] Magic link for ${email}: ${link}`,
-      );
-      return;
-    }
-
-    const { Resend } = await import('resend');
-    const resend = new Resend(apiKey);
-    const from = this.config.get<string>('resend.from') ?? 'noreply@example.com';
-    const greeting = name ? `Hola ${name}` : 'Hola';
-
-    await resend.emails.send({
-      from,
-      to: email,
-      subject: 'Tu enlace de acceso',
-      html: `
-        <p>${greeting},</p>
-        <p>Haz clic en el siguiente enlace para acceder a tu panel.
-           El enlace vence en 15 minutos y solo puede usarse una vez.</p>
-        <p><a href="${link}">Acceder al panel</a></p>
-        <p>Si no solicitaste este acceso, ignora este mensaje.</p>
-      `,
-    });
+    await this.mail.sendOperatorMagicLink(email, name, link);
   }
 }
