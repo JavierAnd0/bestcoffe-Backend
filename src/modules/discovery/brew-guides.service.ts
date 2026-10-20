@@ -23,14 +23,18 @@ export class BrewGuidesService {
     });
     const hasMore = items.length > limit;
     const page = hasMore ? items.slice(0, limit) : items;
-    return { items: page, nextCursor: hasMore ? page[page.length - 1].id : null };
+    return {
+      items: page,
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
   }
 
   async findBySlug(tenantId: string, slug: string) {
     const guide = await this.prisma.brewGuide.findUnique({
       where: { tenantId_slug: { tenantId, slug } },
     });
-    if (!guide) throw new NotFoundException(`Brew guide "${slug}" no encontrado`);
+    if (!guide)
+      throw new NotFoundException(`Brew guide "${slug}" no encontrado`);
     return guide;
   }
 }

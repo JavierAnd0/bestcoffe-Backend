@@ -6,11 +6,22 @@ export class RedeemGiftDto {
   @IsString()
   redemptionCode: string;
 
-  @ApiPropertyOptional({ description: 'Frecuencia de envío en días', default: 30, minimum: 7, maximum: 365 })
-  @IsOptional() @IsInt() @Min(7) @Max(365)
+  @ApiPropertyOptional({
+    description: 'Frecuencia de envío en días',
+    default: 30,
+    minimum: 7,
+    maximum: 365,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(7)
+  @Max(365)
   frequencyDays?: number;
 
-  @ApiPropertyOptional({ description: 'ID de una dirección guardada del cliente' })
-  @IsOptional() @IsString()
+  @ApiPropertyOptional({
+    description: 'ID de una dirección guardada del cliente',
+  })
+  @IsOptional()
+  @IsString()
   addressId?: string;
 }

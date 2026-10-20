@@ -24,7 +24,13 @@ import { AuditInterceptor } from './interceptors/audit.interceptor';
       }),
     }),
   ],
-  providers: [AuthGuard, CustomerAuthGuard, TenantGuard, RolesGuard, AuditInterceptor],
+  providers: [
+    AuthGuard,
+    CustomerAuthGuard,
+    TenantGuard,
+    RolesGuard,
+    AuditInterceptor,
+  ],
   exports: [
     JwtModule,
     AuthGuard,

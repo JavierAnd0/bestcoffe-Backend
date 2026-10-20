@@ -54,7 +54,9 @@ export class AdminCollectionsService {
           orderBy: { position: 'asc' },
           select: {
             position: true,
-            product: { select: { id: true, slug: true, name: true, status: true } },
+            product: {
+              select: { id: true, slug: true, name: true, status: true },
+            },
           },
         },
       },
@@ -101,7 +103,9 @@ export class AdminCollectionsService {
         ...(dto.slug !== undefined && { slug: dto.slug }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.type !== undefined && { type: dto.type }),
-        ...(dto.rules !== undefined && { rules: dto.rules as Prisma.InputJsonValue }),
+        ...(dto.rules !== undefined && {
+          rules: dto.rules as Prisma.InputJsonValue,
+        }),
         ...(dto.position !== undefined && { position: dto.position }),
       },
     });
@@ -191,7 +195,8 @@ export class AdminCollectionsService {
       where: { collectionId_productId: { collectionId: id, productId } },
       select: { productId: true },
     });
-    if (!link) throw new NotFoundException('El producto no está en la colección');
+    if (!link)
+      throw new NotFoundException('El producto no está en la colección');
 
     await this.prisma.collectionProduct.delete({
       where: { collectionId_productId: { collectionId: id, productId } },
@@ -230,12 +235,16 @@ export class AdminCollectionsService {
     }
   }
 
-  private async assertSlugFree(tenantId: string, slug: string): Promise<string> {
+  private async assertSlugFree(
+    tenantId: string,
+    slug: string,
+  ): Promise<string> {
     const clash = await this.prisma.collection.findUnique({
       where: { tenantId_slug: { tenantId, slug } },
       select: { id: true },
     });
-    if (clash) throw new BadRequestException(`El slug "${slug}" ya está en uso`);
+    if (clash)
+      throw new BadRequestException(`El slug "${slug}" ya está en uso`);
     return slug;
   }
 

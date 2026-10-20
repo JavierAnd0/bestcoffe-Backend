@@ -40,28 +40,19 @@ export class AdminSubscriptionsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.subscriptions.findOne(tenant.id, id);
   }
 
   @Post(':id/pause')
   @HttpCode(200)
-  pause(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  pause(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.subscriptions.pause(tenant.id, id);
   }
 
   @Post(':id/resume')
   @HttpCode(200)
-  resume(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  resume(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.subscriptions.resume(tenant.id, id);
   }
 
@@ -76,10 +67,7 @@ export class AdminSubscriptionsController {
 
   @Post(':id/cancel')
   @HttpCode(200)
-  cancel(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  cancel(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.subscriptions.cancel(tenant.id, id);
   }
 

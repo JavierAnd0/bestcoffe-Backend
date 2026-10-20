@@ -26,10 +26,7 @@ export class AuditController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.audit.findOne(tenant.id, id);
   }
 }

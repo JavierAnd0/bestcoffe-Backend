@@ -40,10 +40,7 @@ export class AdminCollectionsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.collections.findOne(tenant.id, id);
   }
 
@@ -65,10 +62,7 @@ export class AdminCollectionsController {
   }
 
   @Delete(':id')
-  remove(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  remove(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.collections.remove(tenant.id, tenant.slug, id);
   }
 
@@ -98,6 +92,11 @@ export class AdminCollectionsController {
     @Param('id') id: string,
     @Param('productId') productId: string,
   ) {
-    return this.collections.detachProduct(tenant.id, tenant.slug, id, productId);
+    return this.collections.detachProduct(
+      tenant.id,
+      tenant.slug,
+      id,
+      productId,
+    );
   }
 }

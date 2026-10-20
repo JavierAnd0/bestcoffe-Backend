@@ -85,10 +85,7 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
  * `gifts` a un PRO como cortesía sin subirle el tier). Solo se aplican claves
  * conocidas y del tipo correcto; el resto se ignora.
  */
-export function resolveFeatures(
-  tier: Tier,
-  overrides?: unknown,
-): FeatureFlags {
+export function resolveFeatures(tier: Tier, overrides?: unknown): FeatureFlags {
   const base = TIER_FEATURES[tier];
   if (!overrides || typeof overrides !== 'object') return { ...base };
 

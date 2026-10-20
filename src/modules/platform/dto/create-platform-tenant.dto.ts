@@ -15,9 +15,14 @@ import {
 import { Tier } from '@prisma/client';
 
 export class CreatePlatformTenantDto {
-  @ApiProperty({ description: 'Slug único (solo letras minúsculas, números y guiones)', example: 'cafe-roma' })
+  @ApiProperty({
+    description: 'Slug único (solo letras minúsculas, números y guiones)',
+    example: 'cafe-roma',
+  })
   @IsString()
-  @Matches(/^[a-z0-9-]+$/, { message: 'El slug solo puede contener letras minúsculas, números y guiones' })
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'El slug solo puede contener letras minúsculas, números y guiones',
+  })
   slug: string;
 
   @ApiProperty({ example: 'Café Roma' })
@@ -29,7 +34,10 @@ export class CreatePlatformTenantDto {
   @IsIn(Object.values(Tier))
   tier?: Tier;
 
-  @ApiProperty({ description: 'Email del primer TENANT_OWNER', example: 'owner@caferoma.com' })
+  @ApiProperty({
+    description: 'Email del primer TENANT_OWNER',
+    example: 'owner@caferoma.com',
+  })
   @IsEmail()
   ownerEmail: string;
 
@@ -38,12 +46,18 @@ export class CreatePlatformTenantDto {
   @IsString()
   ownerName?: string;
 
-  @ApiPropertyOptional({ description: 'Dominio personalizado (sin https://)', example: 'tienda.caferoma.com' })
+  @ApiPropertyOptional({
+    description: 'Dominio personalizado (sin https://)',
+    example: 'tienda.caferoma.com',
+  })
   @IsOptional()
   @IsFQDN()
   domain?: string;
 
-  @ApiPropertyOptional({ description: 'Feature flags iniciales', example: { subscriptions: true } })
+  @ApiPropertyOptional({
+    description: 'Feature flags iniciales',
+    example: { subscriptions: true },
+  })
   @IsOptional()
   @IsObject()
   features?: Record<string, unknown>;
@@ -56,7 +70,9 @@ export class CreatePlatformTenantDto {
   @IsBoolean()
   commissionEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: '% de comisión inicial (si commissionEnabled)' })
+  @ApiPropertyOptional({
+    description: '% de comisión inicial (si commissionEnabled)',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)

@@ -41,7 +41,9 @@ export class MpPaymentInputDto {
   @IsString()
   issuerId?: string;
 
-  @ApiPropertyOptional({ description: 'Email del pagador; por defecto el del cliente' })
+  @ApiPropertyOptional({
+    description: 'Email del pagador; por defecto el del cliente',
+  })
   @IsOptional()
   @IsEmail()
   payerEmail?: string;

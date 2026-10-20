@@ -20,7 +20,6 @@ const SESSION_TTL = '30d';
 
 @Injectable()
 export class CustomerAuthService {
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,

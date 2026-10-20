@@ -10,7 +10,10 @@ export class AttachProductsDto {
 }
 
 export class ReorderProductsDto {
-  @ApiProperty({ type: [String], description: 'IDs de producto en el orden deseado' })
+  @ApiProperty({
+    type: [String],
+    description: 'IDs de producto en el orden deseado',
+  })
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

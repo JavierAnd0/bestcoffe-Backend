@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
 export interface CustomerJwtPayload {
-  sub: string;       // Customer.id
+  sub: string; // Customer.id
   email: string;
   tenantId: string;
   type: 'customer';

@@ -49,7 +49,10 @@ export class CustomerSubscriptionsService {
     });
     const hasMore = items.length > limit;
     const page = hasMore ? items.slice(0, limit) : items;
-    return { items: page, nextCursor: hasMore ? page[page.length - 1].id : null };
+    return {
+      items: page,
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
   }
 
   async findOne(customerId: string, id: string) {
@@ -61,7 +64,11 @@ export class CustomerSubscriptionsService {
     return sub;
   }
 
-  async create(customerId: string, tenantId: string, dto: CreateSubscriptionDto) {
+  async create(
+    customerId: string,
+    tenantId: string,
+    dto: CreateSubscriptionDto,
+  ) {
     const variant = await this.prisma.productVariant.findFirst({
       where: { id: dto.variantId, tenantId },
       select: {
@@ -99,9 +106,16 @@ export class CustomerSubscriptionsService {
 
     const customer = await this.prisma.customer.findUniqueOrThrow({
       where: { id: customerId },
-      select: { id: true, email: true, name: true, stripeCustomerId: true, tenantId: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        stripeCustomerId: true,
+        tenantId: true,
+      },
     });
-    const stripeCustomerId = await this.stripe.createOrGetStripeCustomer(customer);
+    const stripeCustomerId =
+      await this.stripe.createOrGetStripeCustomer(customer);
 
     const nextShipAt = new Date(Date.now() + dto.frequencyDays * DAY_MS);
 
@@ -113,7 +127,9 @@ export class CustomerSubscriptionsService {
         frequencyDays: dto.frequencyDays,
         status: SubStatus.PAUSED,
         nextShipAt,
-        ...(shippingAddress && { shippingAddress: shippingAddress as Prisma.InputJsonValue }),
+        ...(shippingAddress && {
+          shippingAddress: shippingAddress as Prisma.InputJsonValue,
+        }),
       },
     });
 
@@ -129,7 +145,9 @@ export class CustomerSubscriptionsService {
   async pause(customerId: string, id: string) {
     const sub = await this.ensureOwnership(customerId, id);
     if (sub.status === SubStatus.CANCELLED) {
-      throw new BadRequestException('La suscripción está cancelada y no admite cambios');
+      throw new BadRequestException(
+        'La suscripción está cancelada y no admite cambios',
+      );
     }
     if (sub.status === SubStatus.PAUSED) {
       throw new BadRequestException('La suscripción ya está pausada');
@@ -146,7 +164,11 @@ export class CustomerSubscriptionsService {
     if (sub.nextShipAt.getTime() < Date.now()) {
       data.nextShipAt = new Date(Date.now() + sub.frequencyDays * DAY_MS);
     }
-    return this.prisma.subscription.update({ where: { id }, data, select: SUB_SELECT });
+    return this.prisma.subscription.update({
+      where: { id },
+      data,
+      select: SUB_SELECT,
+    });
   }
 
   async skipNext(customerId: string, id: string) {
@@ -160,7 +182,9 @@ export class CustomerSubscriptionsService {
       where: { id },
       data: {
         status: SubStatus.SKIPPED_NEXT,
-        nextShipAt: new Date(sub.nextShipAt.getTime() + sub.frequencyDays * DAY_MS),
+        nextShipAt: new Date(
+          sub.nextShipAt.getTime() + sub.frequencyDays * DAY_MS,
+        ),
       },
       select: SUB_SELECT,
     });
@@ -175,7 +199,11 @@ export class CustomerSubscriptionsService {
   }
 
   private setStatus(id: string, status: SubStatus) {
-    return this.prisma.subscription.update({ where: { id }, data: { status }, select: SUB_SELECT });
+    return this.prisma.subscription.update({
+      where: { id },
+      data: { status },
+      select: SUB_SELECT,
+    });
   }
 
   private async ensureOwnership(customerId: string, id: string) {

@@ -21,7 +21,10 @@ export class CartService {
    * variantes pertenezcan al tenant y estén activas, marca faltas de stock,
    * valida el código de descuento y aplica el umbral de envío gratis.
    */
-  async price(tenantId: string, dto: PriceCartDto): Promise<CartPriceResponseDto> {
+  async price(
+    tenantId: string,
+    dto: PriceCartDto,
+  ): Promise<CartPriceResponseDto> {
     const mode = dto.mode ?? PurchaseMode.ONE_TIME;
     const ids = [...new Set(dto.items.map((i) => i.variantId))];
 
@@ -64,7 +67,7 @@ export class CartService {
 
       const unitCents =
         mode === PurchaseMode.SUBSCRIPTION
-          ? v.priceSubscription ?? v.priceOneTime
+          ? (v.priceSubscription ?? v.priceOneTime)
           : v.priceOneTime;
       const lineCents = unitCents * item.quantity;
       const outOfStock = v.stock < item.quantity;
@@ -90,7 +93,10 @@ export class CartService {
     const discountCents = discount?.valid ? discount.amountCents : 0;
 
     const shippingCents = await this.shippingFor(tenantId, subtotalCents);
-    const totalCents = Math.max(0, subtotalCents - discountCents + shippingCents);
+    const totalCents = Math.max(
+      0,
+      subtotalCents - discountCents + shippingCents,
+    );
 
     return {
       lines,

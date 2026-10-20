@@ -18,7 +18,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditInterceptor.name);
-  private static readonly MUTATIONS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+  private static readonly MUTATIONS = new Set([
+    'POST',
+    'PATCH',
+    'PUT',
+    'DELETE',
+  ]);
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -65,7 +70,9 @@ export class AuditInterceptor implements NestInterceptor {
     // /v1/admin/products/123 → "products"
     const parts = url.split('?')[0].split('/').filter(Boolean);
     const adminIdx = parts.indexOf('admin');
-    return adminIdx >= 0 && parts[adminIdx + 1] ? parts[adminIdx + 1] : 'unknown';
+    return adminIdx >= 0 && parts[adminIdx + 1]
+      ? parts[adminIdx + 1]
+      : 'unknown';
   }
 
   private safeBody(body: unknown): object {

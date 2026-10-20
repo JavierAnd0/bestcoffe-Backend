@@ -42,7 +42,11 @@ export class QuizAnswersDto {
   @IsBoolean()
   decaf?: boolean;
 
-  @ApiPropertyOptional({ default: 3, maximum: 6, description: 'Cuántas recomendaciones' })
+  @ApiPropertyOptional({
+    default: 3,
+    maximum: 6,
+    description: 'Cuántas recomendaciones',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

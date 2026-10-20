@@ -13,7 +13,9 @@ class ListMyOrdersDto {
   @ApiPropertyOptional({ default: 20, maximum: 50 })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
-  @IsInt() @Min(1) @Max(50)
+  @IsInt()
+  @Min(1)
+  @Max(50)
   limit?: number = 20;
 }
 

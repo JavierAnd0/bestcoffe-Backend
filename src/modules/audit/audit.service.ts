@@ -49,19 +49,30 @@ export class AuditService {
     return {
       items: page.map((r) => ({
         ...r,
-        actor: actors.get(r.userId) ?? { id: r.userId, email: null, name: null },
+        actor: actors.get(r.userId) ?? {
+          id: r.userId,
+          email: null,
+          name: null,
+        },
       })),
       nextCursor: hasMore ? page[page.length - 1].id : null,
     };
   }
 
   async findOne(tenantId: string, id: string) {
-    const log = await this.prisma.auditLog.findFirst({ where: { id, tenantId } });
-    if (!log) throw new NotFoundException('Registro de auditoría no encontrado');
+    const log = await this.prisma.auditLog.findFirst({
+      where: { id, tenantId },
+    });
+    if (!log)
+      throw new NotFoundException('Registro de auditoría no encontrado');
     const actors = await this.actorsById([log.userId]);
     return {
       ...log,
-      actor: actors.get(log.userId) ?? { id: log.userId, email: null, name: null },
+      actor: actors.get(log.userId) ?? {
+        id: log.userId,
+        email: null,
+        name: null,
+      },
     };
   }
 

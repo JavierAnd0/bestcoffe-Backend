@@ -35,10 +35,7 @@ export class MembersController {
   }
 
   @Post()
-  add(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Body() dto: AddMemberDto,
-  ) {
+  add(@CurrentTenant() tenant: CurrentTenantData, @Body() dto: AddMemberDto) {
     return this.members.add(tenant.id, dto);
   }
 

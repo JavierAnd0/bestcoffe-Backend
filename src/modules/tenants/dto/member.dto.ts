@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { OperatorRole } from '@prisma/client';
 
 /**
@@ -22,7 +28,9 @@ export class AddMemberDto {
   @MaxLength(200)
   email!: string;
 
-  @ApiPropertyOptional({ description: 'Nombre a mostrar (si el usuario es nuevo)' })
+  @ApiPropertyOptional({
+    description: 'Nombre a mostrar (si el usuario es nuevo)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(120)

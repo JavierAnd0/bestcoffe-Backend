@@ -14,11 +14,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import {
-  ProductStatus,
-  ProductType,
-  SubAvail,
-} from '@prisma/client';
+import { ProductStatus, ProductType, SubAvail } from '@prisma/client';
 import { CreateVariantDto } from './create-variant.dto';
 
 export class CreateProductDto {

@@ -31,7 +31,10 @@ function makeTenantDomainResolver(prisma: PrismaService) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   app.useLogger(app.get(Logger));
   app.use(cookieParser());
@@ -54,7 +57,9 @@ async function bootstrap() {
       .filter(Boolean),
   );
 
-  const isAllowedTenantDomain = makeTenantDomainResolver(app.get(PrismaService));
+  const isAllowedTenantDomain = makeTenantDomainResolver(
+    app.get(PrismaService),
+  );
   const corsLogger = new NestLogger('CORS');
 
   app.enableCors({
@@ -80,7 +85,10 @@ async function bootstrap() {
           isAllowedTenantDomain(host)
             .then((allowed) => cb(null, allowed))
             .catch((err) => {
-              corsLogger.error(`Fallo resolviendo dominio CORS: ${origin}`, err);
+              corsLogger.error(
+                `Fallo resolviendo dominio CORS: ${origin}`,
+                err,
+              );
               cb(null, false);
             });
         },

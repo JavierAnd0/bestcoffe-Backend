@@ -71,7 +71,10 @@ export class QuizService {
       .slice(0, answers.limit ?? 3);
 
     return {
-      recommendations: scored.map((s) => ({ ...s.product, matchScore: s.score })),
+      recommendations: scored.map((s) => ({
+        ...s.product,
+        matchScore: s.score,
+      })),
     };
   }
 

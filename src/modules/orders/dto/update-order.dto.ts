@@ -15,7 +15,9 @@ export class UpdateOrderDto {
   @MaxLength(2048)
   trackingUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Notas internas (no visibles al cliente)' })
+  @ApiPropertyOptional({
+    description: 'Notas internas (no visibles al cliente)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

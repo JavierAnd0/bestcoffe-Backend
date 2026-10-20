@@ -59,7 +59,9 @@ export class MercadoPagoService {
     const clientId = this.config.get<string>('mercadopago.clientId');
     const redirectUri = this.config.get<string>('mercadopago.redirectUri');
     if (!clientId || !redirectUri) {
-      throw new BadRequestException('MercadoPago no está configurado en la plataforma');
+      throw new BadRequestException(
+        'MercadoPago no está configurado en la plataforma',
+      );
     }
     const state = await this.jwt.signAsync(
       { sub: tenantId, purpose: 'mp-oauth' },
@@ -77,10 +79,10 @@ export class MercadoPagoService {
   /** Valida el `state` del callback OAuth y devuelve el tenantId. */
   async resolveOAuthState(state: string): Promise<string> {
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string; purpose: string }>(
-        state,
-        { secret: this.config.get<string>('jwt.secret') },
-      );
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+        purpose: string;
+      }>(state, { secret: this.config.get<string>('jwt.secret') });
       if (payload.purpose !== 'mp-oauth') throw new Error('purpose');
       return payload.sub;
     } catch {
@@ -102,7 +104,10 @@ export class MercadoPagoService {
     await this.persistCreds(tenantId, creds);
   }
 
-  private async persistCreds(tenantId: string, creds: MpOAuthCredentials): Promise<void> {
+  private async persistCreds(
+    tenantId: string,
+    creds: MpOAuthCredentials,
+  ): Promise<void> {
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
@@ -192,7 +197,8 @@ export class MercadoPagoService {
 
     const accessToken = await this.getFreshAccessToken(order.tenant);
     const amount = Math.round(order.totalCents / 100);
-    const feePct = this.config.get<number>('mercadopago.marketplaceFeePct') ?? 0;
+    const feePct =
+      this.config.get<number>('mercadopago.marketplaceFeePct') ?? 0;
     const applicationFee =
       feePct > 0 ? Math.round((amount * feePct) / 100) : undefined;
 
@@ -206,17 +212,15 @@ export class MercadoPagoService {
         ...(input.issuerId && { issuer_id: Number(input.issuerId) }),
         payer: { email: input.payerEmail ?? order.customer.email },
         external_reference: orderId,
-        ...(applicationFee !== undefined && { application_fee: applicationFee }),
+        ...(applicationFee !== undefined && {
+          application_fee: applicationFee,
+        }),
         metadata: { orderId, tenantId: order.tenantId },
       },
       requestOptions: { idempotencyKey: orderId },
     })) as unknown as MpPaymentResult;
 
-    await this.applyPaymentStatus(
-      orderId,
-      String(result.id),
-      result.status,
-    );
+    await this.applyPaymentStatus(orderId, String(result.id), result.status);
 
     return {
       status: result.status,
@@ -264,7 +268,9 @@ export class MercadoPagoService {
 
     const accessToken = await this.getFreshAccessToken(order.tenant);
     const payment = new Payment(this.client(accessToken));
-    const got = (await payment.get({ id: paymentId })) as unknown as MpPaymentResult;
+    const got = (await payment.get({
+      id: paymentId,
+    })) as unknown as MpPaymentResult;
 
     await this.applyPaymentStatus(order.id, paymentId, got.status);
   }
@@ -294,7 +300,9 @@ export class MercadoPagoService {
 
     const dataId = (query['data.id'] ?? '').toLowerCase();
     const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
-    const expected = createHmac('sha256', secret).update(manifest).digest('hex');
+    const expected = createHmac('sha256', secret)
+      .update(manifest)
+      .digest('hex');
     try {
       return timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
     } catch {
@@ -328,7 +336,10 @@ export class MercadoPagoService {
   }
 
   /** Marca PAID + decremento de stock + uso de descuento, idempotente. */
-  private async markOrderPaid(orderId: string, mpPaymentId: string): Promise<void> {
+  private async markOrderPaid(
+    orderId: string,
+    mpPaymentId: string,
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       // Idempotencia: si el pago ya fue contabilizado, salir.
       try {

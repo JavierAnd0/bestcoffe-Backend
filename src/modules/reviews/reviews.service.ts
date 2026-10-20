@@ -17,7 +17,9 @@ export class ReviewsService {
       select: { id: true },
     });
     if (!product) {
-      throw new NotFoundException(`Producto "${dto.productSlug}" no encontrado`);
+      throw new NotFoundException(
+        `Producto "${dto.productSlug}" no encontrado`,
+      );
     }
 
     const email = dto.email.toLowerCase().trim();

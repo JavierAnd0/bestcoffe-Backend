@@ -41,10 +41,7 @@ export class AdminContentController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.content.findOne(tenant.id, id);
   }
 
@@ -66,10 +63,7 @@ export class AdminContentController {
   }
 
   @Delete(':id')
-  remove(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  remove(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.content.remove(tenant.id, tenant.slug, id);
   }
 }

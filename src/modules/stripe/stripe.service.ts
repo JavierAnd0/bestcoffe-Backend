@@ -81,7 +81,9 @@ export class StripeService {
    */
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     if (!this.webhookSecret) {
-      this.logger.warn('STRIPE_WEBHOOK_SECRET no configurado — webhook ignorado');
+      this.logger.warn(
+        'STRIPE_WEBHOOK_SECRET no configurado — webhook ignorado',
+      );
       return;
     }
 
@@ -159,7 +161,9 @@ export class StripeService {
     await this.prisma.$transaction(async (tx) => {
       // Idempotencia: si el evento ya fue procesado, salir sin hacer nada.
       try {
-        await tx.stripeEvent.create({ data: { id: event.id, type: event.type } });
+        await tx.stripeEvent.create({
+          data: { id: event.id, type: event.type },
+        });
       } catch {
         return;
       }
@@ -207,7 +211,9 @@ export class StripeService {
 
     await this.prisma.$transaction(async (tx) => {
       try {
-        await tx.stripeEvent.create({ data: { id: event.id, type: event.type } });
+        await tx.stripeEvent.create({
+          data: { id: event.id, type: event.type },
+        });
       } catch {
         return;
       }
@@ -225,7 +231,9 @@ export class StripeService {
 
     await this.prisma.$transaction(async (tx) => {
       try {
-        await tx.stripeEvent.create({ data: { id: event.id, type: event.type } });
+        await tx.stripeEvent.create({
+          data: { id: event.id, type: event.type },
+        });
       } catch {
         return; // idempotencia
       }

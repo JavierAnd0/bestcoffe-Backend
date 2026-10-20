@@ -14,7 +14,9 @@ export class CollectionsController {
   constructor(private readonly collections: CollectionsService) {}
 
   @Get()
-  @ApiOkResponse({ description: 'Colecciones del tenant con conteo de productos' })
+  @ApiOkResponse({
+    description: 'Colecciones del tenant con conteo de productos',
+  })
   list(@CurrentTenant() tenant: CurrentTenantData) {
     return this.collections.list(tenant.id);
   }

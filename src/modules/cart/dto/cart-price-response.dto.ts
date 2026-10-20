@@ -7,7 +7,8 @@ export class CartLineDto {
   @ApiProperty() productName!: string;
   @ApiProperty() sizeGrams!: number;
   @ApiProperty({ enum: GrindFormat }) grind!: GrindFormat;
-  @ApiProperty({ description: 'Precio unitario en centavos COP' }) unitCents!: number;
+  @ApiProperty({ description: 'Precio unitario en centavos COP' })
+  unitCents!: number;
   @ApiProperty() quantity!: number;
   @ApiProperty() lineCents!: number;
   @ApiProperty({ description: 'Stock insuficiente para la cantidad pedida' })
@@ -27,7 +28,8 @@ export class CartPriceResponseDto {
   @ApiProperty() discountCents!: number;
   @ApiProperty() shippingCents!: number;
   @ApiProperty() totalCents!: number;
-  @ApiProperty({ description: 'Faltó stock en alguna línea' }) hasStockIssues!: boolean;
+  @ApiProperty({ description: 'Faltó stock en alguna línea' })
+  hasStockIssues!: boolean;
   @ApiProperty({ type: CartDiscountDto, required: false })
   discount?: CartDiscountDto;
 }

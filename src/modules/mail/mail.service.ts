@@ -30,7 +30,8 @@ export class MailService {
     // Import dinámico: no falla el boot si el paquete/clave no están presentes.
     const { Resend } = await import('resend');
     const resend = new Resend(apiKey);
-    const from = this.config.get<string>('resend.from') ?? 'noreply@example.com';
+    const from =
+      this.config.get<string>('resend.from') ?? 'noreply@example.com';
 
     await resend.emails.send({
       from,

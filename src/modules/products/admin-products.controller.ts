@@ -46,10 +46,7 @@ export class AdminProductsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.products.findOne(tenant.id, id);
   }
 
@@ -72,10 +69,7 @@ export class AdminProductsController {
 
   @Post(':id/archive')
   @HttpCode(200)
-  archive(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  archive(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.products.archive(tenant.id, tenant.slug, id);
   }
 

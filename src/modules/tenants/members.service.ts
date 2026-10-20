@@ -51,7 +51,12 @@ export class MembersService {
     await this.prisma.tenantMembership.create({
       data: { userId: user.id, tenantId, role: dto.role },
     });
-    return { userId: user.id, email: user.email, name: user.name, role: dto.role };
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: dto.role,
+    };
   }
 
   /** Cambia el rol; protege que no quede el tenant sin ningún TENANT_OWNER. */

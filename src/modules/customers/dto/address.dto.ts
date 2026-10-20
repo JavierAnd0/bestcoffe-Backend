@@ -8,14 +8,24 @@ export class CreateAddressDto {
   @ApiPropertyOptional() @IsString() city: string;
   @ApiPropertyOptional() @IsOptional() @IsString() state?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() postalCode?: string;
-  @ApiPropertyOptional({ default: 'CO' }) @IsOptional() @IsString() country?: string;
+  @ApiPropertyOptional({ default: 'CO' })
+  @IsOptional()
+  @IsString()
+  country?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
-  @ApiPropertyOptional({ default: false }) @IsOptional() @IsBoolean() isDefault?: boolean;
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
 }
 
 export class UpdateAddressDto {
   @ApiPropertyOptional() @IsOptional() @IsString() label?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 200) line1?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 200)
+  line1?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() line2?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() state?: string;

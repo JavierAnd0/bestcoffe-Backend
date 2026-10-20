@@ -50,10 +50,7 @@ export class AdminReviewsController {
 
   @Post(':id/reject')
   @HttpCode(200)
-  reject(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  reject(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.reviews.reject(tenant.id, tenant.slug, id);
   }
 

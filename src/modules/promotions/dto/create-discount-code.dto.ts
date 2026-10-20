@@ -14,7 +14,10 @@ import {
 import { DiscountType } from '@prisma/client';
 
 export class CreateDiscountCodeDto {
-  @ApiProperty({ description: 'Se normaliza a MAYÚSCULAS', example: 'BIENVENIDO10' })
+  @ApiProperty({
+    description: 'Se normaliza a MAYÚSCULAS',
+    example: 'BIENVENIDO10',
+  })
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,
   )

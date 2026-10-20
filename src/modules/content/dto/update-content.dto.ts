@@ -27,7 +27,10 @@ export class UpdateContentDto {
   @IsBoolean()
   active?: boolean;
 
-  @ApiPropertyOptional({ description: 'Inicio de vigencia (ISO)', nullable: true })
+  @ApiPropertyOptional({
+    description: 'Inicio de vigencia (ISO)',
+    nullable: true,
+  })
   @IsOptional()
   @IsDateString()
   startsAt?: string | null;

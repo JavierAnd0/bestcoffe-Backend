@@ -34,10 +34,10 @@ export class RolesGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const required = this.reflector.getAllAndOverride<OperatorRole[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const required = this.reflector.getAllAndOverride<OperatorRole[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (!required || required.length === 0) return true;
 
     const req = context.switchToHttp().getRequest();
@@ -60,8 +60,7 @@ export class RolesGuard implements CanActivate {
     this.cls.set(CTX.ROLE, role);
 
     const allowed =
-      role === 'PLATFORM_OWNER' ||
-      required.some((r) => RANK[role] >= RANK[r]);
+      role === 'PLATFORM_OWNER' || required.some((r) => RANK[role] >= RANK[r]);
     if (!allowed) {
       throw new ForbiddenException('Rol insuficiente para esta acción');
     }

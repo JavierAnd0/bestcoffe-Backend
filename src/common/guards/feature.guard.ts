@@ -43,8 +43,7 @@ export class FeatureGuard implements CanActivate {
     if (!feature) return true;
 
     const req = context.switchToHttp().getRequest();
-    const tenantId: string | undefined =
-      req.tenantId ?? req.customer?.tenantId;
+    const tenantId: string | undefined = req.tenantId ?? req.customer?.tenantId;
     if (!tenantId) {
       throw new HttpException(
         'No se pudo resolver el tenant para validar el plan',

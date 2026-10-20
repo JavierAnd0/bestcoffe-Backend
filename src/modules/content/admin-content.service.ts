@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { Prisma, SiteContentKind } from '@prisma/client';
@@ -41,7 +45,8 @@ export class AdminContentService {
     const block = await this.prisma.siteContent.findFirst({
       where: { id, tenantId },
     });
-    if (!block) throw new NotFoundException('Bloque de contenido no encontrado');
+    if (!block)
+      throw new NotFoundException('Bloque de contenido no encontrado');
     return block;
   }
 
@@ -53,7 +58,7 @@ export class AdminContentService {
       data: {
         tenantId,
         kind: dto.kind,
-        data: data as Prisma.InputJsonValue,
+        data: data,
         active: dto.active ?? true,
         startsAt: dto.startsAt ? new Date(dto.startsAt) : null,
         endsAt: dto.endsAt ? new Date(dto.endsAt) : null,

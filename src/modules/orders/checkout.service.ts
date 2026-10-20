@@ -44,12 +44,14 @@ export class CheckoutService {
           source: 'CHECKOUT',
           status: 'RECEIVED',
           paymentStatus: 'PENDING',
-          shippingAddress: dto.shippingAddress as object,
+          shippingAddress: dto.shippingAddress,
           subtotalCents: priced.subtotalCents,
           discountCents: priced.discountCents,
           shippingCents: priced.shippingCents,
           totalCents: priced.totalCents,
-          discountCode: priced.discount?.valid ? priced.discount.code : undefined,
+          discountCode: priced.discount?.valid
+            ? priced.discount.code
+            : undefined,
           items: {
             create: priced.lines.map((line) => ({
               tenantId,
@@ -86,7 +88,10 @@ export class CheckoutService {
       }
       // createPayment persiste mpPaymentId en la orden (vía applyPaymentStatus),
       // de modo que el webhook pueda reconciliar el estado por ese id.
-      const result = await this.mercadopago.createPayment(order.id, dto.payment);
+      const result = await this.mercadopago.createPayment(
+        order.id,
+        dto.payment,
+      );
       return {
         orderId: order.id,
         provider: 'MERCADOPAGO' as const,

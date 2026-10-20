@@ -25,7 +25,9 @@ class ListGiftsDto {
   @ApiPropertyOptional({ default: 25, maximum: 100 })
   @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
-  @IsInt() @Min(1) @Max(100)
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number = 25;
 
   @ApiPropertyOptional() @IsOptional() @IsString() cursor?: string;

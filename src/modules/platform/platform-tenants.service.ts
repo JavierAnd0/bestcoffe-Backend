@@ -55,7 +55,8 @@ export class PlatformTenantsService {
       where: { slug: dto.slug },
       select: { id: true },
     });
-    if (existing) throw new ConflictException(`El slug "${dto.slug}" ya está en uso`);
+    if (existing)
+      throw new ConflictException(`El slug "${dto.slug}" ya está en uso`);
 
     const tier = dto.tier ?? Tier.STARTER;
 
@@ -67,8 +68,7 @@ export class PlatformTenantsService {
     }
     const commissionEnabled = dto.commissionEnabled ?? false;
     // Si se habilita con un % inicial, arranca directamente en modalidad comisión.
-    const startsOnCommission =
-      commissionEnabled && dto.commissionPct != null;
+    const startsOnCommission = commissionEnabled && dto.commissionPct != null;
 
     const tenant = await this.prisma.$transaction(async (tx) => {
       const t = await tx.tenant.create({
@@ -142,7 +142,9 @@ export class PlatformTenantsService {
           include: { user: { select: { id: true, email: true, name: true } } },
           orderBy: { createdAt: 'asc' },
         },
-        _count: { select: { orders: true, customers: true, subscriptions: true } },
+        _count: {
+          select: { orders: true, customers: true, subscriptions: true },
+        },
       },
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
@@ -208,15 +210,23 @@ export class PlatformTenantsService {
       data: {
         ...(dto.tier && { tier: dto.tier }),
         ...(dto.features && {
-          features: { ...(tenant.features as object), ...dto.features } as Prisma.InputJsonValue,
+          features: {
+            ...(tenant.features as object),
+            ...dto.features,
+          } as Prisma.InputJsonValue,
         }),
         ...(dto.branding && {
-          branding: { ...(tenant.branding as object), ...dto.branding } as Prisma.InputJsonValue,
+          branding: {
+            ...(tenant.branding as object),
+            ...dto.branding,
+          } as Prisma.InputJsonValue,
         }),
         // Facturación
         ...(dto.billingType && { billingType: dto.billingType }),
         ...(dto.billingStatus && { billingStatus: dto.billingStatus }),
-        ...(dto.billingCycle !== undefined && { billingCycle: dto.billingCycle }),
+        ...(dto.billingCycle !== undefined && {
+          billingCycle: dto.billingCycle,
+        }),
         ...(dto.billingStartedAt !== undefined && {
           billingStartedAt: toDate(dto.billingStartedAt),
         }),
@@ -257,7 +267,8 @@ export class PlatformTenantsService {
     });
     if (!owner) return;
 
-    const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const webUrl =
+      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
     const panelUrl = `${webUrl}/admin`;
     try {
       await this.mail.sendCommissionChangeProposal(
@@ -281,7 +292,8 @@ export class PlatformTenantsService {
       include: { user: { select: { id: true, email: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    if (!membership) throw new NotFoundException('No hay TENANT_OWNER en este tenant');
+    if (!membership)
+      throw new NotFoundException('No hay TENANT_OWNER en este tenant');
 
     const payload: JwtPayload = {
       sub: membership.user.id,

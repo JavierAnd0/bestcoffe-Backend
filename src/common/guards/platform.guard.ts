@@ -54,7 +54,9 @@ export class PlatformGuard implements CanActivate {
 
     const ownerEmail = this.config.get<string>('platformOwnerEmail');
     if (!ownerEmail || payload.email !== ownerEmail) {
-      throw new ForbiddenException('Acceso restringido al propietario de la plataforma');
+      throw new ForbiddenException(
+        'Acceso restringido al propietario de la plataforma',
+      );
     }
 
     // El claim de email no basta: el subject debe ser un User real cuyo email
@@ -64,14 +66,18 @@ export class PlatformGuard implements CanActivate {
       select: { id: true, email: true },
     });
     if (!user || user.email !== ownerEmail) {
-      throw new ForbiddenException('Acceso restringido al propietario de la plataforma');
+      throw new ForbiddenException(
+        'Acceso restringido al propietario de la plataforma',
+      );
     }
 
     req.user = { id: user.id, email: user.email };
     return true;
   }
 
-  private extractToken(req: { headers: Record<string, string> }): string | null {
+  private extractToken(req: {
+    headers: Record<string, string>;
+  }): string | null {
     const header = req.headers['authorization'];
     if (!header) return null;
     const [type, token] = header.split(' ');

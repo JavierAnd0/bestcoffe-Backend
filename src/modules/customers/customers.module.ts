@@ -7,7 +7,11 @@ import { AddressesController } from './addresses.controller';
 import { AddressesService } from './addresses.service';
 
 @Module({
-  controllers: [CustomerAuthController, CustomersController, AddressesController],
+  controllers: [
+    CustomerAuthController,
+    CustomersController,
+    AddressesController,
+  ],
   providers: [CustomerAuthService, CustomersService, AddressesService],
 })
 export class CustomersModule {}

@@ -21,7 +21,10 @@ export class AttachImageDto {
 }
 
 export class ReorderImagesDto {
-  @ApiProperty({ type: [String], description: 'IDs de imagen en el orden deseado' })
+  @ApiProperty({
+    type: [String],
+    description: 'IDs de imagen en el orden deseado',
+  })
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

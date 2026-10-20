@@ -76,7 +76,10 @@ export class GiftsService {
     });
     const hasMore = items.length > limit;
     const page = hasMore ? items.slice(0, limit) : items;
-    return { items: page, nextCursor: hasMore ? page[page.length - 1].id : null };
+    return {
+      items: page,
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
   }
 
   // ── Customer ───────────────────────────────────────────────────────────────
@@ -89,19 +92,25 @@ export class GiftsService {
         status: GiftStatus.PENDING_ACTIVATION,
       },
     });
-    if (!gift) throw new NotFoundException('Código de regalo no válido o ya utilizado');
+    if (!gift)
+      throw new NotFoundException('Código de regalo no válido o ya utilizado');
 
     let shippingAddress: Prisma.InputJsonValue | undefined;
     if (dto.addressId) {
       const addr = await this.prisma.address.findFirst({
         where: { id: dto.addressId, customerId },
         select: {
-          line1: true, line2: true, city: true,
-          state: true, postalCode: true, country: true, phone: true,
+          line1: true,
+          line2: true,
+          city: true,
+          state: true,
+          postalCode: true,
+          country: true,
+          phone: true,
         },
       });
       if (!addr) throw new NotFoundException('Dirección no encontrada');
-      shippingAddress = addr as Prisma.InputJsonValue;
+      shippingAddress = addr;
     }
 
     const frequencyDays = dto.frequencyDays ?? 30;

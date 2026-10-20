@@ -8,7 +8,11 @@ export class AdminDashboardService {
 
   async getKpis(tenantId: string) {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfYesterday = new Date(startOfToday);
     startOfYesterday.setDate(startOfYesterday.getDate() - 1);
@@ -21,7 +25,11 @@ export class AdminDashboardService {
       lowStockVariants,
     ] = await Promise.all([
       this.prisma.order.aggregate({
-        where: { tenantId, paymentStatus: PaymentStatus.PAID, createdAt: { gte: startOfToday } },
+        where: {
+          tenantId,
+          paymentStatus: PaymentStatus.PAID,
+          createdAt: { gte: startOfToday },
+        },
         _sum: { totalCents: true },
         _count: true,
       }),
@@ -34,7 +42,11 @@ export class AdminDashboardService {
         _sum: { totalCents: true },
       }),
       this.prisma.order.aggregate({
-        where: { tenantId, paymentStatus: PaymentStatus.PAID, createdAt: { gte: startOfMonth } },
+        where: {
+          tenantId,
+          paymentStatus: PaymentStatus.PAID,
+          createdAt: { gte: startOfMonth },
+        },
         _sum: { totalCents: true },
       }),
       this.prisma.subscription.count({
@@ -61,7 +73,13 @@ export class AdminDashboardService {
         label: 'Ventas hoy',
         value: formatCop(todaySales),
         hint: `${todayOrders._count} pedido${todayOrders._count !== 1 ? 's' : ''} pagado${todayOrders._count !== 1 ? 's' : ''}`,
-        delta: delta !== null ? { value: `${delta > 0 ? '+' : ''}${delta}%`, positive: delta >= 0 } : null,
+        delta:
+          delta !== null
+            ? {
+                value: `${delta > 0 ? '+' : ''}${delta}%`,
+                positive: delta >= 0,
+              }
+            : null,
       },
       {
         label: 'Ingresos del mes',
@@ -79,7 +97,8 @@ export class AdminDashboardService {
         label: 'Stock bajo',
         value: String(lowStockVariants),
         hint: 'variantes con < 5 unidades',
-        delta: lowStockVariants > 0 ? { value: 'Revisar', positive: false } : null,
+        delta:
+          lowStockVariants > 0 ? { value: 'Revisar', positive: false } : null,
       },
     ];
   }
@@ -89,7 +108,11 @@ export class AdminDashboardService {
 
     const [lowStockVariants, pendingReviews, failedOrders] = await Promise.all([
       this.prisma.productVariant.findMany({
-        where: { tenantId, stock: { lt: 5 }, product: { tenantId, status: 'ACTIVE' } },
+        where: {
+          tenantId,
+          stock: { lt: 5 },
+          product: { tenantId, status: 'ACTIVE' },
+        },
         include: { product: { select: { name: true } } },
         take: 5,
         orderBy: { stock: 'asc' },
@@ -98,11 +121,20 @@ export class AdminDashboardService {
         where: { tenantId, status: 'PENDING' },
       }),
       this.prisma.order.count({
-        where: { tenantId, paymentStatus: PaymentStatus.FAILED, createdAt: { gte: sevenDaysAgo } },
+        where: {
+          tenantId,
+          paymentStatus: PaymentStatus.FAILED,
+          createdAt: { gte: sevenDaysAgo },
+        },
       }),
     ]);
 
-    const alerts: Array<{ id: string; severity: 'danger' | 'warning' | 'info'; title: string; body: string }> = [];
+    const alerts: Array<{
+      id: string;
+      severity: 'danger' | 'warning' | 'info';
+      title: string;
+      body: string;
+    }> = [];
 
     for (const v of lowStockVariants) {
       alerts.push({
@@ -148,7 +180,11 @@ export class AdminDashboardService {
     const now = new Date();
 
     for (let i = days - 1; i >= 0; i--) {
-      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dayStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - i,
+      );
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayEnd.getDate() + 1);
 
@@ -198,7 +234,10 @@ export class AdminDashboardService {
       email: c.email,
       ordersCount: c._count.orders,
       activeSubsCount: c._count.subscriptions,
-      totalSpentCents: c.orders.reduce((sum, o) => sum + (o.totalCents ?? 0), 0),
+      totalSpentCents: c.orders.reduce(
+        (sum, o) => sum + (o.totalCents ?? 0),
+        0,
+      ),
       joinedAt: c.createdAt.toISOString(),
     }));
 

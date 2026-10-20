@@ -23,12 +23,16 @@ export class UpdatePlatformTenantDto {
   @IsIn(Object.values(Tier))
   tier?: Tier;
 
-  @ApiPropertyOptional({ description: 'Feature flags (merge con los existentes)' })
+  @ApiPropertyOptional({
+    description: 'Feature flags (merge con los existentes)',
+  })
   @IsOptional()
   @IsObject()
   features?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ description: 'Datos de branding (merge con los existentes)' })
+  @ApiPropertyOptional({
+    description: 'Datos de branding (merge con los existentes)',
+  })
   @IsOptional()
   @IsObject()
   branding?: Record<string, unknown>;
@@ -49,27 +53,41 @@ export class UpdatePlatformTenantDto {
   @IsIn([...Object.values(TenantBillingCycle), null])
   billingCycle?: TenantBillingCycle | null;
 
-  @ApiPropertyOptional({ description: 'ISO date — inicio de suscripción o pago único', nullable: true })
+  @ApiPropertyOptional({
+    description: 'ISO date — inicio de suscripción o pago único',
+    nullable: true,
+  })
   @IsOptional()
   @IsISO8601()
   billingStartedAt?: string | null;
 
-  @ApiPropertyOptional({ description: 'ISO date — próxima renovación o fin de mantenimiento', nullable: true })
+  @ApiPropertyOptional({
+    description: 'ISO date — próxima renovación o fin de mantenimiento',
+    nullable: true,
+  })
   @IsOptional()
   @IsISO8601()
   currentPeriodEnd?: string | null;
 
-  @ApiPropertyOptional({ description: 'ISO date — cancelación', nullable: true })
+  @ApiPropertyOptional({
+    description: 'ISO date — cancelación',
+    nullable: true,
+  })
   @IsOptional()
   @IsISO8601()
   cancelledAt?: string | null;
 
-  @ApiPropertyOptional({ description: 'Pago único: ¿cobra mantenimiento recurrente?' })
+  @ApiPropertyOptional({
+    description: 'Pago único: ¿cobra mantenimiento recurrente?',
+  })
   @IsOptional()
   @IsBoolean()
   hasMaintenance?: boolean;
 
-  @ApiPropertyOptional({ description: 'Monto del cobro en centavos COP', nullable: true })
+  @ApiPropertyOptional({
+    description: 'Monto del cobro en centavos COP',
+    nullable: true,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)

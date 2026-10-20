@@ -33,11 +33,17 @@ export class AdminProductsService {
       take: 26,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { updatedAt: 'desc' },
-      include: { _count: { select: { variants: true } }, images: { take: 1, orderBy: { position: 'asc' } } },
+      include: {
+        _count: { select: { variants: true } },
+        images: { take: 1, orderBy: { position: 'asc' } },
+      },
     });
     const hasMore = items.length > 25;
     const page = hasMore ? items.slice(0, 25) : items;
-    return { items: page, nextCursor: hasMore ? page[page.length - 1].id : null };
+    return {
+      items: page,
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
   }
 
   async findOne(tenantId: string, id: string) {
@@ -130,7 +136,10 @@ export class AdminProductsService {
       select: { id: true, slug: true, status: true },
     });
     // siempre revalidar: el producto sale del storefront
-    this.revalidation.dispatch(tenantSlug, ['products', `product:${existing.slug}`]);
+    this.revalidation.dispatch(tenantSlug, [
+      'products',
+      `product:${existing.slug}`,
+    ]);
     return product;
   }
 
@@ -175,7 +184,9 @@ export class AdminProductsService {
       data: {
         ...(dto.sizeGrams !== undefined && { sizeGrams: dto.sizeGrams }),
         ...(dto.grind !== undefined && { grind: dto.grind }),
-        ...(dto.priceOneTime !== undefined && { priceOneTime: dto.priceOneTime }),
+        ...(dto.priceOneTime !== undefined && {
+          priceOneTime: dto.priceOneTime,
+        }),
         ...(dto.priceSubscription !== undefined && {
           priceSubscription: dto.priceSubscription,
         }),

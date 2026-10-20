@@ -137,7 +137,8 @@ export class AuthService {
     name: string | null,
     rawToken: string,
   ): Promise<void> {
-    const webUrl = this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const webUrl =
+      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
     const link = `${webUrl}/acceso/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
     await this.mail.sendOperatorMagicLink(email, name, link);
   }

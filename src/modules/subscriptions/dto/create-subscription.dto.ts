@@ -10,7 +10,9 @@ export class CreateSubscriptionDto {
   @Max(365)
   frequencyDays: number;
 
-  @ApiPropertyOptional({ description: 'ID de una dirección guardada del cliente' })
+  @ApiPropertyOptional({
+    description: 'ID de una dirección guardada del cliente',
+  })
   @IsOptional()
   @IsString()
   addressId?: string;

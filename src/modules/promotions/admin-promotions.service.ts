@@ -16,7 +16,10 @@ export class AdminPromotionsService {
   /** Listado de códigos del tenant (opcional por estado), más recientes primero. */
   async list(tenantId: string, dto: ListDiscountCodesDto) {
     return this.prisma.discountCode.findMany({
-      where: { tenantId, ...(dto.active !== undefined && { active: dto.active }) },
+      where: {
+        tenantId,
+        ...(dto.active !== undefined && { active: dto.active }),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

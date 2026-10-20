@@ -41,10 +41,7 @@ export class AdminPromotionsController {
   }
 
   @Get(':id')
-  findOne(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.promotions.findOne(tenant.id, id);
   }
 
@@ -66,10 +63,7 @@ export class AdminPromotionsController {
   }
 
   @Delete(':id')
-  remove(
-    @CurrentTenant() tenant: CurrentTenantData,
-    @Param('id') id: string,
-  ) {
+  remove(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.promotions.remove(tenant.id, id);
   }
 }

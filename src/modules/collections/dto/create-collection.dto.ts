@@ -18,7 +18,9 @@ export class CreateCollectionDto {
   @MaxLength(120)
   name!: string;
 
-  @ApiPropertyOptional({ description: 'Slug; si se omite se deriva del nombre' })
+  @ApiPropertyOptional({
+    description: 'Slug; si se omite se deriva del nombre',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(120)
@@ -35,7 +37,10 @@ export class CreateCollectionDto {
   @IsEnum(CollectionType)
   type?: CollectionType;
 
-  @ApiPropertyOptional({ type: AutoRulesDto, description: 'Reglas (solo type=AUTO)' })
+  @ApiPropertyOptional({
+    type: AutoRulesDto,
+    description: 'Reglas (solo type=AUTO)',
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => AutoRulesDto)
