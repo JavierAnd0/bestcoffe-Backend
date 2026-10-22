@@ -108,6 +108,9 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // Cierre limpio de conexiones ante SIGTERM/SIGINT en Docker/K8s
+  app.enableShutdownHooks();
+
   // OpenAPI — el front genera su SDK tipado desde /docs-json
   const config = new DocumentBuilder()
     .setTitle('BestCoffee API')

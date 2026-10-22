@@ -111,6 +111,74 @@ export class MailService {
     });
   }
 
+  /** Confirmación de orden de compra pagada. */
+  async sendOrderConfirmation(opts: {
+    to: string;
+    customerName: string | null;
+    orderId: string;
+    storeName: string;
+    totalCents: number;
+    items: Array<{
+      productName: string;
+      variantName: string;
+      quantity: number;
+      lineCents: number;
+    }>;
+  }): Promise<void> {
+    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const itemsHtml = opts.items
+      .map(
+        (it) => `
+        <tr>
+          <td style="padding:8px; border-bottom:1px solid #eee;">
+            <strong>${it.productName}</strong><br/>
+            <small style="color:#666;">${it.variantName}</small>
+          </td>
+          <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${it.quantity}</td>
+          <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">$${(it.lineCents / 100).toLocaleString('es-CO')}</td>
+        </tr>`,
+      )
+      .join('');
+
+    const formattedTotal = `$${(opts.totalCents / 100).toLocaleString('es-CO')}`;
+
+    await this.send({
+      to: opts.to,
+      subject: `¡Confirmación de compra en ${opts.storeName}! (Orden #${opts.orderId.slice(-6).toUpperCase()})`,
+      fallbackLog: `Order confirmation for ${opts.to} (Order: ${opts.orderId}, Store: ${opts.storeName}, Total: ${formattedTotal})`,
+      html: `
+        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
+          <h2>¡Gracias por tu compra!</h2>
+          <p>${greeting}, hemos recibido tu pedido en <strong>${opts.storeName}</strong> y ya lo estamos preparando.</p>
+          <p><strong>Número de pedido:</strong> #${opts.orderId.slice(-6).toUpperCase()}</p>
+          
+          <table style="width:100%; border-collapse:collapse; margin-top:20px; font-size:14px;">
+            <thead>
+              <tr style="background:#f9f9f9; text-align:left;">
+                <th style="padding:8px; border-bottom:2px solid #ddd;">Producto</th>
+                <th style="padding:8px; border-bottom:2px solid #ddd; text-align:center;">Cant.</th>
+                <th style="padding:8px; border-bottom:2px solid #ddd; text-align:right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" style="padding:12px 8px; font-weight:bold; text-align:right;">Total pagado:</td>
+                <td style="padding:12px 8px; font-weight:bold; text-align:right;">${formattedTotal}</td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p style="margin-top:24px; font-size:13px; color:#777;">
+            Te notificaremos en cuanto tu paquete sea despachado con la información de rastreo.
+          </p>
+        </div>
+      `,
+    });
+  }
+
   /** Bienvenida al dueño de una tienda recién creada por el superadmin. */
   async sendTenantWelcome(
     to: string,
