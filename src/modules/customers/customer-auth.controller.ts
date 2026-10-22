@@ -12,6 +12,7 @@ import { CustomerAuthService } from './customer-auth.service';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { CustomerLoginDto } from './dto/customer-login.dto';
+import { SyncNeonCustomerDto } from './dto/sync-neon-customer.dto';
 
 const COOKIE_OPTIONS = (isProd: boolean) =>
   ({
@@ -71,6 +72,24 @@ export class CustomerAuthController {
     const result = await this.customerAuth.login(tenant.id, dto);
     this.setSessionCookie(res, result.accessToken);
     return { customer: result.customer };
+  }
+
+  /**
+   * Sincroniza la sesión con el backend tras iniciar sesión en el frontend vía Neon Auth (Google / OTP).
+   * Genera el Customer en la base de datos de la tienda si no existe y emite la cookie de sesión.
+   */
+  @Post('neon-sync')
+  @Public()
+  @UseGuards(TenantGuard, FeatureGuard)
+  @RequireFeature('customerAccounts')
+  async syncNeon(
+    @CurrentTenant() tenant: CurrentTenantData,
+    @Body() dto: SyncNeonCustomerDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.customerAuth.syncNeonCustomer(tenant.id, dto);
+    this.setSessionCookie(res, result.accessToken);
+    return { customer: result.customer, accessToken: result.accessToken };
   }
 
   /** Cierra la sesión eliminando la cookie. */

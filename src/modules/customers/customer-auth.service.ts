@@ -13,6 +13,7 @@ import { MailService } from '../mail/mail.service';
 import type { RegisterCustomerDto } from './dto/register-customer.dto';
 import type { VerifyEmailDto } from './dto/verify-email.dto';
 import type { CustomerLoginDto } from './dto/customer-login.dto';
+import type { SyncNeonCustomerDto } from './dto/sync-neon-customer.dto';
 import type { CustomerJwtPayload } from '../../common/guards/customer-auth.guard';
 
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
@@ -128,6 +129,39 @@ export class CustomerAuthService {
       customer.email,
       customer.tenantId,
     );
+    return {
+      accessToken,
+      customer: { id: customer.id, email: customer.email, name: customer.name },
+    };
+  }
+
+  // ─── Sync Neon Auth / OAuth ──────────────────────────────────────────────
+
+  /**
+   * Sincroniza o crea el cliente cuando inicia sesión mediante Neon Auth / Google OAuth.
+   * Al venir validado por Neon Auth, el correo ya está verificado.
+   */
+  async syncNeonCustomer(tenantId: string, dto: SyncNeonCustomerDto) {
+    const customer = await this.prisma.customer.upsert({
+      where: { tenantId_email: { tenantId, email: dto.email } },
+      update: {
+        emailVerified: true,
+        ...(dto.name && { name: dto.name }),
+      },
+      create: {
+        tenantId,
+        email: dto.email,
+        name: dto.name ?? null,
+        emailVerified: true,
+      },
+    });
+
+    const accessToken = await this.signToken(
+      customer.id,
+      customer.email,
+      customer.tenantId,
+    );
+
     return {
       accessToken,
       customer: { id: customer.id, email: customer.email, name: customer.name },
