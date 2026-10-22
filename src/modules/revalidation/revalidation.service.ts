@@ -47,8 +47,9 @@ export class RevalidationService {
           );
         }
       })
-      .catch((err) =>
-        this.logger.warn(`No se pudo revalidar el front: ${err.message}`),
-      );
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`No se pudo revalidar el front: ${msg}`);
+      });
   }
 }

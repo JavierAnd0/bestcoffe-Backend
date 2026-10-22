@@ -4,23 +4,31 @@ import type { Request, Response } from 'express';
 import { serve } from 'inngest/express';
 import { Public } from '../../common/decorators/public.decorator';
 import { inngest, inngestFunctions } from './inngest.client';
+import { SubscriptionRenewalService } from '../subscriptions/subscription-renewal.service';
+import { createRenewSubscriptionsFunction } from './subscriptions-inngest';
 
-/**
- * Monta el handler de Inngest en /jobs (GET para introspección, PUT para
- * registro, POST para invocación). Inngest verifica su propia firma.
- */
 @ApiExcludeController()
 @Controller('jobs')
 export class InngestController {
-  // signingKey se lee de INNGEST_SIGNING_KEY del entorno automáticamente.
-  private readonly handler = serve({
-    client: inngest,
-    functions: inngestFunctions,
-  });
+  private readonly handler;
+
+  constructor(renewalService: SubscriptionRenewalService) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.handler = serve({
+      client: inngest,
+      functions: [
+        ...inngestFunctions,
+        createRenewSubscriptionsFunction(renewalService),
+      ],
+    });
+  }
 
   @All()
   @Public()
-  handle(@Req() req: Request, @Res() res: Response) {
-    return this.handler(req, res);
+  async handle(@Req() req: Request, @Res() res: Response) {
+    await (this.handler as (r: Request, s: Response) => Promise<unknown>)(
+      req,
+      res,
+    );
   }
 }

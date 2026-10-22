@@ -7,7 +7,6 @@ import {
   IsInt,
   IsOptional,
   Matches,
-  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -18,8 +17,8 @@ export class CreateDiscountCodeDto {
     description: 'Se normaliza a MAYÚSCULAS',
     example: 'BIENVENIDO10',
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : (value as string),
   )
   @Matches(/^[A-Z0-9_-]{3,40}$/, {
     message: 'code: 3-40 chars, solo A-Z, 0-9, guion o guion bajo',

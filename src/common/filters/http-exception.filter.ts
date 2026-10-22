@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 
 /** Respuesta de error consistente para todo el API. */
@@ -15,8 +16,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const res = ctx.getResponse();
-    const req = ctx.getRequest();
+    const res = ctx.getResponse<Response>();
+    const req = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Error interno';
@@ -35,7 +36,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       ({ status, message, error } = this.mapPrismaError(exception));
     }
 
-    if (status >= 500) {
+    if (Number(status) >= 500) {
       this.logger.error(
         `${req.method} ${req.url} → ${status}`,
         (exception as Error)?.stack,

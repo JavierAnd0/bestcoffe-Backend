@@ -51,7 +51,7 @@ import { MailModule } from './modules/mail/mail.module';
         mount: true,
         generateId: true,
         idGenerator: () => randomUUID(),
-        setup: (cls, req) => {
+        setup: (cls, req: { id?: string }) => {
           cls.set(CTX.REQUEST_ID, req.id ?? randomUUID());
         },
       },

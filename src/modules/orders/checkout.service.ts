@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -21,11 +22,15 @@ export class CheckoutService {
     });
 
     // 1. Precio autoritativo — valida variantes, stock, descuento, envío.
-    const priced = await this.cart.price(tenantId, {
-      items: dto.items,
-      mode: dto.mode,
-      discountCode: dto.discountCode,
-    });
+    const priced = await this.cart.price(
+      tenantId,
+      {
+        items: dto.items,
+        mode: dto.mode,
+        discountCode: dto.discountCode,
+      },
+      customerId,
+    );
 
     if (priced.hasStockIssues) {
       const outOfStock = priced.lines
@@ -44,7 +49,8 @@ export class CheckoutService {
           source: 'CHECKOUT',
           status: 'RECEIVED',
           paymentStatus: 'PENDING',
-          shippingAddress: dto.shippingAddress,
+          shippingAddress:
+            dto.shippingAddress as unknown as Prisma.InputJsonValue,
           subtotalCents: priced.subtotalCents,
           discountCents: priced.discountCents,
           shippingCents: priced.shippingCents,

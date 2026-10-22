@@ -24,6 +24,7 @@ export class CartService {
   async price(
     tenantId: string,
     dto: PriceCartDto,
+    customerId?: string,
   ): Promise<CartPriceResponseDto> {
     const mode = dto.mode ?? PurchaseMode.ONE_TIME;
     const ids = [...new Set(dto.items.map((i) => i.variantId))];
@@ -88,7 +89,12 @@ export class CartService {
     }
 
     const discount = dto.discountCode
-      ? await this.validateDiscount(tenantId, dto.discountCode, subtotalCents)
+      ? await this.validateDiscount(
+          tenantId,
+          dto.discountCode,
+          subtotalCents,
+          customerId,
+        )
       : undefined;
     const discountCents = discount?.valid ? discount.amountCents : 0;
 
@@ -114,6 +120,7 @@ export class CartService {
     tenantId: string,
     code: string,
     subtotalCents: number,
+    customerId?: string,
   ): Promise<CartDiscountDto> {
     const dc = await this.prisma.discountCode.findUnique({
       where: { tenantId_code: { tenantId, code: code.toUpperCase() } },
@@ -134,6 +141,24 @@ export class CartService {
     }
     if (dc.minSubtotalCents && subtotalCents < dc.minSubtotalCents) {
       return invalid('No alcanza el mínimo de compra');
+    }
+
+    if (dc.oneUsePerCustomer) {
+      if (!customerId) {
+        return invalid('Inicia sesión para usar este cupón de un solo uso');
+      }
+      const previousUse = await this.prisma.order.findFirst({
+        where: {
+          tenantId,
+          customerId,
+          discountCode: dc.code,
+          paymentStatus: 'PAID',
+        },
+        select: { id: true },
+      });
+      if (previousUse) {
+        return invalid('Ya has utilizado este código de descuento');
+      }
     }
 
     const amountCents =

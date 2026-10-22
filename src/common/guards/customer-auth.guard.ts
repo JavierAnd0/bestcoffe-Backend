@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 
 export interface CustomerJwtPayload {
   sub: string; // Customer.id
@@ -20,6 +21,10 @@ export interface CurrentCustomerData {
   tenantId: string;
 }
 
+interface RequestWithCustomer extends Request {
+  customer?: CurrentCustomerData;
+}
+
 export const CUSTOMER_COOKIE = 'customer_token';
 
 @Injectable()
@@ -30,7 +35,7 @@ export class CustomerAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<RequestWithCustomer>();
     const token = this.extractToken(req);
     if (!token) throw new UnauthorizedException('Falta token de autenticación');
 
@@ -55,11 +60,11 @@ export class CustomerAuthGuard implements CanActivate {
   // Cookie HttpOnly primaria; Authorization Bearer como fallback para clientes nativos.
   private extractToken(req: {
     cookies?: Record<string, string>;
-    headers: Record<string, string>;
+    headers: Record<string, string | string[] | undefined>;
   }): string | null {
     if (req.cookies?.[CUSTOMER_COOKIE]) return req.cookies[CUSTOMER_COOKIE];
     const header = req.headers['authorization'];
-    if (!header) return null;
+    if (!header || typeof header !== 'string') return null;
     const [type, token] = header.split(' ');
     return type === 'Bearer' && token ? token : null;
   }

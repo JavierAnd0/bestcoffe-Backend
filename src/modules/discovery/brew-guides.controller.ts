@@ -12,7 +12,9 @@ import { BrewGuidesService } from './brew-guides.service';
 class ListBrewGuidesDto {
   @ApiPropertyOptional({ default: 12, maximum: 50 })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? parseInt(value, 10) : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(50)

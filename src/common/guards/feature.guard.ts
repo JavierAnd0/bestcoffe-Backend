@@ -6,12 +6,19 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REQUIRE_FEATURE_KEY } from '../decorators/require-feature.decorator';
 import {
   resolveFeatures,
   type BooleanFeatureKey,
 } from '../features/tier-features';
+import type { CurrentCustomerData } from './customer-auth.guard';
+
+interface RequestWithTenantAndCustomer extends Request {
+  tenantId?: string;
+  customer?: CurrentCustomerData;
+}
 
 /**
  * Bloquea el endpoint si el tier del tenant no incluye la capacidad exigida por
@@ -42,7 +49,9 @@ export class FeatureGuard implements CanActivate {
     );
     if (!feature) return true;
 
-    const req = context.switchToHttp().getRequest();
+    const req = context
+      .switchToHttp()
+      .getRequest<RequestWithTenantAndCustomer>();
     const tenantId: string | undefined = req.tenantId ?? req.customer?.tenantId;
     if (!tenantId) {
       throw new HttpException(

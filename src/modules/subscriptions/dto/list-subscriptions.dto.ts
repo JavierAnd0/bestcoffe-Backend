@@ -21,7 +21,9 @@ export class ListSubscriptionsDto {
 
   @ApiPropertyOptional({ default: 25, maximum: 100 })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? parseInt(value, 10) : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(100)

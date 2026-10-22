@@ -151,6 +151,27 @@ export class StripeService {
     return si.client_secret!;
   }
 
+  /**
+   * Ejecuta un cobro off-session (para renovación recurrente de suscripción).
+   * Intenta confirmar el cobro directamente con el método de pago por defecto del cliente.
+   */
+  async chargeOffSession(
+    stripeCustomerId: string,
+    amountCents: number,
+    orderId: string,
+    tenantId: string,
+  ): Promise<{ piId: string; status: string }> {
+    const pi = await this.sdk.paymentIntents.create({
+      amount: Math.round(amountCents / 100),
+      currency: 'cop',
+      customer: stripeCustomerId,
+      off_session: true,
+      confirm: true,
+      metadata: { orderId, tenantId },
+    });
+    return { piId: pi.id, status: pi.status };
+  }
+
   // ─── Handlers privados ───────────────────────────────────────────────────
 
   private async onPaymentSucceeded(event: WebhookEvent): Promise<void> {

@@ -11,7 +11,9 @@ export class ListProductsDto {
 
   @ApiPropertyOptional({ description: 'Tostado mínimo (1..9)' })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? parseInt(value, 10) : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(9)
@@ -29,7 +31,9 @@ export class ListProductsDto {
 
   @ApiPropertyOptional({ default: 24, maximum: 100 })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? parseInt(value, 10) : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(100)

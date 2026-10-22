@@ -5,9 +5,15 @@ import {
   Logger,
   NestInterceptor,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../../prisma/prisma.service';
+
+interface RequestWithAudit extends Request {
+  tenantId?: string;
+  user?: { id: string };
+}
 
 /**
  * Escribe AuditLog automáticamente para cada mutación admin exitosa
@@ -28,7 +34,7 @@ export class AuditInterceptor implements NestInterceptor {
   constructor(private readonly prisma: PrismaService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<RequestWithAudit>();
     const method: string = req.method;
     const url: string = req.originalUrl ?? req.url ?? '';
     const shouldAudit =
@@ -42,10 +48,17 @@ export class AuditInterceptor implements NestInterceptor {
         if (!tenantId || !userId) return;
 
         const entity = this.entityFromUrl(url);
-        const entityId =
-          (result && typeof result === 'object' && 'id' in result
-            ? String((result as { id: unknown }).id)
-            : req.params?.id) ?? 'unknown';
+        let entityId = 'unknown';
+        if (result && typeof result === 'object' && 'id' in result) {
+          const val = (result as { id: unknown }).id;
+          if (typeof val === 'string' || typeof val === 'number') {
+            entityId = String(val);
+          }
+        } else if (req.params?.id) {
+          entityId = Array.isArray(req.params.id)
+            ? (req.params.id[0] ?? 'unknown')
+            : req.params.id;
+        }
 
         // fire-and-forget: no bloquear la respuesta por la auditoría
         this.prisma.auditLog
@@ -59,9 +72,10 @@ export class AuditInterceptor implements NestInterceptor {
               diff: this.safeBody(req.body),
             },
           })
-          .catch((err) =>
-            this.logger.warn(`No se pudo escribir AuditLog: ${err.message}`),
-          );
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.warn(`No se pudo escribir AuditLog: ${msg}`);
+          });
       }),
     );
   }

@@ -5,9 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CTX } from '../context/request-context';
+
+interface RequestWithTenant extends Request {
+  tenantId?: string;
+  tenantSlug?: string;
+}
 
 /**
  * Resuelve el tenant desde el header `X-Tenant-Slug` (lo pega el SDK del front),
@@ -28,7 +34,7 @@ export class TenantGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<RequestWithTenant>();
     const slug = (req.headers['x-tenant-slug'] as string)?.trim();
 
     if (!slug) {

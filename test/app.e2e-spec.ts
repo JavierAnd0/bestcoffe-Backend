@@ -18,7 +18,8 @@ describe('App (e2e)', () => {
 
   it('/health (GET) → ok', async () => {
     const res = await request(app.getHttpServer()).get('/health').expect(200);
-    expect(res.body.status).toBeDefined();
+    const body = res.body as { status?: unknown };
+    expect(body.status).toBeDefined();
   });
 
   it('/v1/products (GET) sin tenant → 400', () => {

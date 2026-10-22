@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { CTX } from '../context/request-context';
@@ -15,6 +16,10 @@ export interface JwtPayload {
   sub: string; // userId
   email: string;
   type?: 'operator';
+}
+
+interface RequestWithUser extends Request {
+  user?: { id: string; email: string };
 }
 
 /**
@@ -38,7 +43,7 @@ export class AuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<RequestWithUser>();
     const token = this.extractToken(req);
     if (!token) throw new UnauthorizedException('Falta token de autenticación');
 
@@ -64,10 +69,10 @@ export class AuthGuard implements CanActivate {
   }
 
   private extractToken(req: {
-    headers: Record<string, string>;
+    headers: Record<string, string | string[] | undefined>;
   }): string | null {
     const header = req.headers['authorization'];
-    if (!header) return null;
+    if (!header || typeof header !== 'string') return null;
     const [type, token] = header.split(' ');
     return type === 'Bearer' && token ? token : null;
   }

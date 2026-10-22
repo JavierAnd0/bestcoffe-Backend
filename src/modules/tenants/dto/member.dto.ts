@@ -21,8 +21,8 @@ export const ASSIGNABLE_ROLES: OperatorRole[] = [
 
 export class AddMemberDto {
   @ApiProperty({ description: 'Email del operador (se crea si no existe)' })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : (value as string),
   )
   @IsEmail()
   @MaxLength(200)

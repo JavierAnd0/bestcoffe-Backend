@@ -85,6 +85,51 @@ export class AdminOrdersService {
       }
     }
 
+    // Si se cancela una orden que ya tenía pago procesado (o en proceso de entrega),
+    // se restituye el stock reservado y el cupón de descuento dentro de una transacción.
+    if (
+      dto.status === OrderStatus.CANCELLED &&
+      order.status !== OrderStatus.CANCELLED
+    ) {
+      return this.prisma.$transaction(async (tx) => {
+        const fullOrder = await tx.order.findUnique({
+          where: { id },
+          include: { items: true },
+        });
+
+        if (fullOrder && fullOrder.paymentStatus === 'PAID') {
+          for (const item of fullOrder.items) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
+
+          if (fullOrder.discountCode) {
+            await tx.discountCode.updateMany({
+              where: {
+                tenantId: fullOrder.tenantId,
+                code: fullOrder.discountCode,
+                timesRedeemed: { gt: 0 },
+              },
+              data: { timesRedeemed: { decrement: 1 } },
+            });
+          }
+        }
+
+        return tx.order.update({
+          where: { id },
+          data: {
+            status: dto.status,
+            ...(dto.trackingUrl !== undefined && {
+              trackingUrl: dto.trackingUrl,
+            }),
+          },
+          include: ORDER_DETAIL_INCLUDE,
+        });
+      });
+    }
+
     return this.prisma.order.update({
       where: { id },
       data: {

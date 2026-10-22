@@ -6,10 +6,16 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
+import type { Request } from 'express';
 import type { OperatorRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { CTX } from '../context/request-context';
+
+interface RequestWithAuth extends Request {
+  user?: { id: string; email: string; role?: OperatorRole };
+  tenantId?: string;
+}
 
 /**
  * Verifica que el operador autenticado tenga, en el tenant actual, uno de los
@@ -40,7 +46,7 @@ export class RolesGuard implements CanActivate {
     );
     if (!required || required.length === 0) return true;
 
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest<RequestWithAuth>();
     const userId: string | undefined = req.user?.id;
     const tenantId: string | undefined = req.tenantId;
     if (!userId || !tenantId) {
@@ -56,7 +62,9 @@ export class RolesGuard implements CanActivate {
     }
 
     const role = membership.role;
-    req.user.role = role;
+    if (req.user) {
+      req.user.role = role;
+    }
     this.cls.set(CTX.ROLE, role);
 
     const allowed =

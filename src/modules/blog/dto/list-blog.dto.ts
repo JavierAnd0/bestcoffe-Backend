@@ -5,7 +5,9 @@ import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 export class ListBlogDto {
   @ApiPropertyOptional({ default: 12, maximum: 50 })
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? parseInt(value, 10) : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(50)
