@@ -55,6 +55,9 @@ export const envValidationSchema = Joi.object({
     ? Joi.string().required()
     : Joi.string().allow('').optional(),
 
+  // Cloudflare
+  TURNSTILE_SECRET_KEY: Joi.string().allow('').optional(),
+
   REDIS_URL: Joi.string().allow('').optional(),
   RUN_SEED: Joi.string().allow('').optional(),
   PLATFORM_OWNER_EMAIL: Joi.string().email().allow('').optional(),

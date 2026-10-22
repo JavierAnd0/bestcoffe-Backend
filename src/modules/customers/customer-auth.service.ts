@@ -18,6 +18,8 @@ import type { CustomerJwtPayload } from '../../common/guards/customer-auth.guard
 
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 const SESSION_TTL = '30d';
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos tras 5 intentos fallidos
 
 @Injectable()
 export class CustomerAuthService {
@@ -113,6 +115,16 @@ export class CustomerAuthService {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
+    // Comprobar bloqueo de cuenta temporal por intentos fallidos excesivos
+    if (customer.lockedUntil && customer.lockedUntil > new Date()) {
+      const minutesRemaining = Math.ceil(
+        (customer.lockedUntil.getTime() - Date.now()) / 60000,
+      );
+      throw new UnauthorizedException(
+        `Tu cuenta está bloqueada temporalmente por exceso de intentos fallidos. Intenta nuevamente en ${minutesRemaining} minuto${minutesRemaining > 1 ? 's' : ''}.`,
+      );
+    }
+
     if (!customer.emailVerified) {
       throw new UnauthorizedException(
         'Debes verificar tu correo antes de iniciar sesión. Revisa tu bandeja de entrada.',
@@ -121,7 +133,34 @@ export class CustomerAuthService {
 
     const passwordOk = await argon2Verify(customer.passwordHash, dto.password);
     if (!passwordOk) {
+      const attempts = customer.failedAttempts + 1;
+      const isNowLocked = attempts >= MAX_FAILED_ATTEMPTS;
+
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          failedAttempts: attempts,
+          lockedUntil: isNowLocked
+            ? new Date(Date.now() + LOCKOUT_DURATION_MS)
+            : null,
+        },
+      });
+
+      if (isNowLocked) {
+        throw new UnauthorizedException(
+          'Demasiados intentos fallidos. Tu cuenta ha sido bloqueada temporalmente por 15 minutos.',
+        );
+      }
+
       throw new UnauthorizedException('Correo o contraseña incorrectos');
+    }
+
+    // Reset de intentos fallidos tras login exitoso
+    if (customer.failedAttempts > 0 || customer.lockedUntil) {
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { failedAttempts: 0, lockedUntil: null },
+      });
     }
 
     const accessToken = await this.signToken(

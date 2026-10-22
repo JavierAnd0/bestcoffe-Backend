@@ -10,11 +10,13 @@ import {
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { MercadoPagoService } from './mercadopago.service';
 
 @ApiExcludeController()
+@SkipThrottle()
 @Controller('v1/mercadopago')
 export class MercadoPagoController {
   constructor(

@@ -39,6 +39,9 @@ export interface AppConfig {
     eventKey: string;
     signingKey: string;
   };
+  turnstile: {
+    secretKey: string;
+  };
   redisUrl: string;
 }
 
@@ -89,6 +92,9 @@ export default (): AppConfig => ({
   inngest: {
     eventKey: process.env.INNGEST_EVENT_KEY ?? '',
     signingKey: process.env.INNGEST_SIGNING_KEY ?? '',
+  },
+  turnstile: {
+    secretKey: process.env.TURNSTILE_SECRET_KEY ?? '',
   },
   redisUrl: process.env.REDIS_URL ?? '',
 });

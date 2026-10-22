@@ -1,11 +1,13 @@
 import { Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { StripeService } from './stripe.service';
 
 @ApiExcludeController()
+@SkipThrottle()
 @Controller('v1/stripe')
 export class StripeController {
   constructor(private readonly stripe: StripeService) {}

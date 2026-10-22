@@ -7,6 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -24,6 +25,7 @@ export class AuthController {
   @Post('login')
   @Public()
   @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
   login(@Body() dto: LoginDto) {
     return this.auth.requestMagicLink(dto.email);
   }
@@ -32,6 +34,7 @@ export class AuthController {
   @Post('verify')
   @Public()
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   verify(@Body() dto: VerifyLoginDto) {
     return this.auth.verifyMagicLink(dto.email, dto.token);
   }

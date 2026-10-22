@@ -1,5 +1,6 @@
 import { All, Controller, Req, Res } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { serve } from 'inngest/express';
 import { Public } from '../../common/decorators/public.decorator';
@@ -11,6 +12,7 @@ import { createRenewSubscriptionsFunction } from './subscriptions-inngest';
 import { createOrderConfirmationFunction } from './order-confirmation-inngest';
 
 @ApiExcludeController()
+@SkipThrottle()
 @Controller('jobs')
 export class InngestController {
   private readonly handler;

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 import configuration from './config/configuration';
@@ -11,6 +13,7 @@ import {
 import { CTX } from './common/context/request-context';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { RevalidationModule } from './modules/revalidation/revalidation.module';
 import { HealthModule } from './modules/health/health.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -70,6 +73,22 @@ import { MailModule } from './modules/mail/mail.module';
     CommonModule,
     MailModule,
     RevalidationModule,
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: () => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: seconds(60),
+            limit: 120, // 120 req/min para toda la API por IP
+          },
+        ],
+        errorMessage:
+          'Has superado el límite de peticiones permitido. Por favor espera unos momentos antes de reintentar.',
+        setHeaders: true,
+      }),
+    }),
     // Features
     HealthModule,
     TenantsModule,
@@ -93,6 +112,12 @@ import { MailModule } from './modules/mail/mail.module';
     GiftsModule,
     PlatformModule,
     AdminModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: AppThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

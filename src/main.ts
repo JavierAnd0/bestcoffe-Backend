@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger as NestLogger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -31,10 +33,21 @@ function makeTenantDomainResolver(prisma: PrismaService) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
     rawBody: true,
   });
+
+  // Confianza en proxies inversos (Cloudflare / balanceador) para resolver la IP real del cliente
+  app.set('trust proxy', 1);
+
+  // Cabeceras de seguridad HTTP con Helmet
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Permitir Swagger UI sin bloquear scripts/estilos inline
+      crossOriginResourcePolicy: { policy: 'cross-origin' }, // Permitir consumo cross-origin por el frontend
+    }),
+  );
 
   app.useLogger(app.get(Logger));
   app.use(cookieParser());

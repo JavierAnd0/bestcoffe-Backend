@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -37,6 +38,7 @@ export class CustomerAuthController {
   @Public()
   @UseGuards(TenantGuard, FeatureGuard)
   @RequireFeature('customerAccounts')
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
   register(
     @CurrentTenant() tenant: CurrentTenantData,
     @Body() dto: RegisterCustomerDto,
@@ -50,6 +52,7 @@ export class CustomerAuthController {
    */
   @Post('verify-email')
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async verifyEmail(
     @Body() dto: VerifyEmailDto,
     @Res({ passthrough: true }) res: Response,
@@ -64,6 +67,7 @@ export class CustomerAuthController {
   @Public()
   @UseGuards(TenantGuard, FeatureGuard)
   @RequireFeature('customerAccounts')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(
     @CurrentTenant() tenant: CurrentTenantData,
     @Body() dto: CustomerLoginDto,
@@ -82,6 +86,7 @@ export class CustomerAuthController {
   @Public()
   @UseGuards(TenantGuard, FeatureGuard)
   @RequireFeature('customerAccounts')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async syncNeon(
     @CurrentTenant() tenant: CurrentTenantData,
     @Body() dto: SyncNeonCustomerDto,

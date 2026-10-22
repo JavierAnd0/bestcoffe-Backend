@@ -11,4 +11,3 @@ export class SyncNeonCustomerDto {
   @IsString()
   name?: string;
 }
-

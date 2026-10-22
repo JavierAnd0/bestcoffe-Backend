@@ -1,5 +1,6 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
@@ -18,6 +19,7 @@ export class ReviewsController {
 
   @Post()
   @RequireFeature('reviews')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiCreatedResponse({ description: 'Reseña creada en estado PENDING' })
   create(
     @CurrentTenant() tenant: CurrentTenantData,
