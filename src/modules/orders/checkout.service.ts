@@ -42,6 +42,15 @@ export class CheckoutService {
 
     // 2. Crear la orden en estado PENDING dentro de una transacción.
     const order = await this.prisma.$transaction(async (tx) => {
+      // Limpiar del carrito persistente los items que se están comprando
+      await tx.cartItem.deleteMany({
+        where: {
+          tenantId,
+          customerId,
+          variantId: { in: priced.lines.map((l) => l.variantId) },
+        },
+      });
+
       return tx.order.create({
         data: {
           tenantId,

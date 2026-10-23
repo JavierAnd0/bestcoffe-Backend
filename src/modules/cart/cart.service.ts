@@ -2,6 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DiscountType, SubAvail } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PriceCartDto, PurchaseMode } from './dto/price-cart.dto';
+import { AddCartItemDto } from './dto/add-cart-item.dto';
+import { UpdateCartItemDto } from './dto/update-cart-item.dto';
+import { MergeCartDto } from './dto/merge-cart.dto';
+import { CustomerCartResponseDto } from './dto/customer-cart-response.dto';
 import {
   CartDiscountDto,
   CartLineDto,
@@ -113,6 +117,215 @@ export class CartService {
       hasStockIssues,
       discount,
     };
+  }
+
+  // ─── Carrito Persistente en Base de Datos (Usuarios Autenticados) ─────────────
+
+  /**
+   * Obtiene el carrito del cliente en base de datos junto con el cálculo de precios.
+   */
+  async getCart(
+    tenantId: string,
+    customerId: string,
+    discountCode?: string,
+  ): Promise<CustomerCartResponseDto> {
+    const rawItems = await this.prisma.cartItem.findMany({
+      where: { tenantId, customerId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        variantId: true,
+        quantity: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (rawItems.length === 0) {
+      return {
+        rawItems: [],
+        lines: [],
+        subtotalCents: 0,
+        discountCents: 0,
+        shippingCents: 0,
+        totalCents: 0,
+        hasStockIssues: false,
+      };
+    }
+
+    const priceResult = await this.price(
+      tenantId,
+      {
+        items: rawItems.map((i) => ({
+          variantId: i.variantId,
+          quantity: i.quantity,
+        })),
+        discountCode,
+      },
+      customerId,
+    );
+
+    return {
+      ...priceResult,
+      rawItems,
+    };
+  }
+
+  /**
+   * Agrega o incrementa un item en el carrito persistente del cliente.
+   */
+  async addItem(
+    tenantId: string,
+    customerId: string,
+    dto: AddCartItemDto,
+  ): Promise<CustomerCartResponseDto> {
+    const variant = await this.prisma.productVariant.findFirst({
+      where: {
+        id: dto.variantId,
+        tenantId,
+        product: { status: 'ACTIVE' },
+      },
+      select: { id: true },
+    });
+
+    if (!variant) {
+      throw new BadRequestException(
+        'La variante de producto no está disponible',
+      );
+    }
+
+    const existing = await this.prisma.cartItem.findUnique({
+      where: {
+        customerId_variantId: {
+          customerId,
+          variantId: dto.variantId,
+        },
+      },
+    });
+
+    if (existing) {
+      const newQuantity = Math.min(99, existing.quantity + dto.quantity);
+      await this.prisma.cartItem.update({
+        where: { id: existing.id },
+        data: { quantity: newQuantity },
+      });
+    } else {
+      await this.prisma.cartItem.create({
+        data: {
+          tenantId,
+          customerId,
+          variantId: dto.variantId,
+          quantity: Math.min(99, dto.quantity),
+        },
+      });
+    }
+
+    return this.getCart(tenantId, customerId);
+  }
+
+  /**
+   * Actualiza la cantidad de un item en el carrito (o lo elimina si quantity <= 0).
+   */
+  async updateItem(
+    tenantId: string,
+    customerId: string,
+    variantId: string,
+    dto: UpdateCartItemDto,
+  ): Promise<CustomerCartResponseDto> {
+    if (dto.quantity <= 0) {
+      return this.removeItem(tenantId, customerId, variantId);
+    }
+
+    await this.prisma.cartItem.updateMany({
+      where: { tenantId, customerId, variantId },
+      data: { quantity: Math.min(99, dto.quantity) },
+    });
+
+    return this.getCart(tenantId, customerId);
+  }
+
+  /**
+   * Elimina un item específico del carrito persistente.
+   */
+  async removeItem(
+    tenantId: string,
+    customerId: string,
+    variantId: string,
+  ): Promise<CustomerCartResponseDto> {
+    await this.prisma.cartItem.deleteMany({
+      where: { tenantId, customerId, variantId },
+    });
+
+    return this.getCart(tenantId, customerId);
+  }
+
+  /**
+   * Vacía completamente el carrito en base de datos.
+   */
+  async clearCart(
+    tenantId: string,
+    customerId: string,
+  ): Promise<{ message: string }> {
+    await this.prisma.cartItem.deleteMany({
+      where: { tenantId, customerId },
+    });
+
+    return { message: 'Carrito vaciado exitosamente' };
+  }
+
+  /**
+   * Fusiona los items de localStorage con el carrito en base de datos al iniciar sesión.
+   */
+  async mergeCart(
+    tenantId: string,
+    customerId: string,
+    dto: MergeCartDto,
+  ): Promise<CustomerCartResponseDto> {
+    if (!dto.items || dto.items.length === 0) {
+      return this.getCart(tenantId, customerId);
+    }
+
+    const variantIds = [...new Set(dto.items.map((i) => i.variantId))];
+    const validVariants = await this.prisma.productVariant.findMany({
+      where: {
+        id: { in: variantIds },
+        tenantId,
+        product: { status: 'ACTIVE' },
+      },
+      select: { id: true },
+    });
+    const validSet = new Set(validVariants.map((v) => v.id));
+
+    for (const item of dto.items) {
+      if (!validSet.has(item.variantId)) continue;
+
+      const existing = await this.prisma.cartItem.findUnique({
+        where: {
+          customerId_variantId: {
+            customerId,
+            variantId: item.variantId,
+          },
+        },
+      });
+
+      if (existing) {
+        await this.prisma.cartItem.update({
+          where: { id: existing.id },
+          data: { quantity: Math.min(99, existing.quantity + item.quantity) },
+        });
+      } else {
+        await this.prisma.cartItem.create({
+          data: {
+            tenantId,
+            customerId,
+            variantId: item.variantId,
+            quantity: Math.min(99, item.quantity),
+          },
+        });
+      }
+    }
+
+    return this.getCart(tenantId, customerId);
   }
 
   /** Valida vigencia/condiciones del código y calcula el descuento (no lo redime). */
