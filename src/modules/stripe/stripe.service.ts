@@ -82,10 +82,12 @@ export class StripeService {
    */
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     if (!this.webhookSecret) {
-      this.logger.warn(
-        'STRIPE_WEBHOOK_SECRET no configurado — webhook ignorado',
+      this.logger.error(
+        'ALERTA DE SEGURIDAD: STRIPE_WEBHOOK_SECRET no configurado — se rechaza el webhook en vez de aceptarlo sin validar',
       );
-      return;
+      throw new BadRequestException(
+        'Webhook de Stripe no puede procesarse: falta configuración del secreto',
+      );
     }
 
     let event: WebhookEvent;
@@ -95,7 +97,11 @@ export class StripeService {
         signature,
         this.webhookSecret,
       ) as unknown as WebhookEvent;
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        'ALERTA DE SEGURIDAD: firma de webhook de Stripe inválida — posible intento de ataque',
+        err instanceof Error ? err.stack : String(err),
+      );
       throw new BadRequestException('Webhook signature inválida');
     }
 
