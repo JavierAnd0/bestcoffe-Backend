@@ -261,12 +261,14 @@ model Customer {
   notes            String?
 
   // Auth de storefront
-  passwordHash         String?
-  emailVerified        Boolean   @default(false)
-  emailVerifyToken     String?   // sha-256 del token raw enviado por correo
-  emailVerifyExpiresAt DateTime?
-  failedAttempts       Int       @default(0)
-  lockedUntil          DateTime?
+  passwordHash           String?
+  emailVerified          Boolean   @default(false)
+  emailVerifyToken       String?   // sha-256 del token raw enviado por correo
+  emailVerifyExpiresAt   DateTime?
+  passwordResetToken     String?   // sha-256 del token raw para restablecer clave
+  passwordResetExpiresAt DateTime?
+  failedAttempts         Int       @default(0)
+  lockedUntil            DateTime?
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

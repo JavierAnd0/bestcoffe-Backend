@@ -1,5 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CustomerLoginDto {
   @ApiProperty({ example: 'ana@ejemplo.co' })
@@ -12,4 +18,11 @@ export class CustomerLoginDto {
   @IsNotEmpty()
   @MaxLength(128)
   password!: string;
+
+  @ApiPropertyOptional({
+    description: 'Token de verificación emitido por Cloudflare Turnstile',
+  })
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }

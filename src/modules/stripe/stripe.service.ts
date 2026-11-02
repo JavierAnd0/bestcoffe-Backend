@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { inngest } from '../inngest/inngest.client';
+import { OrderSettlementService } from '../orders/order-settlement.service';
 
 // Stripe v22 usa `export = StripeConstructor` cuyo namespace sólo expone
 // `StripeConstructor.Stripe`. InstanceType<> extrae el tipo de instancia sin
@@ -35,6 +35,7 @@ export class StripeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly settlement: OrderSettlementService,
   ) {
     this.webhookSecret = this.config.get<string>('stripe.webhookSecret') ?? '';
   }
@@ -179,50 +180,12 @@ export class StripeService {
     const orderId = pi.metadata['orderId'];
     if (!orderId) return;
 
-    await this.prisma.$transaction(async (tx) => {
-      // Idempotencia: si el evento ya fue procesado, salir sin hacer nada.
-      try {
-        await tx.stripeEvent.create({
-          data: { id: event.id, type: event.type },
-        });
-      } catch {
-        return;
-      }
-
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        include: { items: true },
-      });
-      if (!order) return;
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: 'PAID', stripePaymentIntentId: pi.id },
-      });
-
-      // Decrementar stock sin ir a negativo.
-      for (const item of order.items) {
-        await tx.productVariant.updateMany({
-          where: { id: item.variantId, stock: { gt: 0 } },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
-
-      // Contabilizar uso del código de descuento.
-      if (order.discountCode) {
-        await tx.discountCode.updateMany({
-          where: { tenantId: order.tenantId, code: order.discountCode },
-          data: { timesRedeemed: { increment: 1 } },
-        });
-      }
+    await this.settlement.settlePaidOrder(orderId, {
+      provider: 'STRIPE',
+      eventId: event.id,
+      eventType: event.type,
+      stripePaymentIntentId: pi.id,
     });
-
-    // Fuera de la transacción: no queremos bloquearla ante errores de red.
-    try {
-      await inngest.send({ name: 'order/created', data: { orderId } });
-    } catch (err) {
-      this.logger.error('inngest.send order/created falló', err);
-    }
   }
 
   private async onPaymentFailed(event: WebhookEvent): Promise<void> {

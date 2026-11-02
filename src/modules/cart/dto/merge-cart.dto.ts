@@ -13,4 +13,3 @@ export class MergeCartDto {
   @Type(() => CartItemDto)
   items!: CartItemDto[];
 }
-

@@ -124,24 +124,27 @@ async function bootstrap() {
   // Cierre limpio de conexiones ante SIGTERM/SIGINT en Docker/K8s
   app.enableShutdownHooks();
 
-  // OpenAPI — el front genera su SDK tipado desde /docs-json
-  const config = new DocumentBuilder()
-    .setTitle('BestCoffee API')
-    .setDescription('API multi-tenant de la plataforma SaaS de café')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addGlobalParameters({
-      name: 'X-Tenant-Slug',
-      in: 'header',
-      required: false,
-      description: 'Slug del tenant (lo pega el SDK del front)',
-      schema: { type: 'string' },
-    })
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    jsonDocumentUrl: 'docs-json',
-  });
+  // OpenAPI — el front genera su SDK tipado desde /docs-json.
+  // En producción se oculta por defecto salvo que ENABLE_SWAGGER=1.
+  if (!isProd || process.env.ENABLE_SWAGGER === '1') {
+    const config = new DocumentBuilder()
+      .setTitle('BestCoffee API')
+      .setDescription('API multi-tenant de la plataforma SaaS de café')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addGlobalParameters({
+        name: 'X-Tenant-Slug',
+        in: 'header',
+        required: false,
+        description: 'Slug del tenant (lo pega el SDK del front)',
+        schema: { type: 'string' },
+      })
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document, {
+      jsonDocumentUrl: 'docs-json',
+    });
+  }
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  HttpException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
@@ -8,11 +15,14 @@ import type { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
 export class CheckoutService {
+  private readonly logger = new Logger(CheckoutService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cart: CartService,
     private readonly stripe: StripeService,
     private readonly mercadopago: MercadoPagoService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(tenantId: string, customerId: string, dto: CreateOrderDto) {
@@ -119,21 +129,45 @@ export class CheckoutService {
     }
 
     // Stripe (proveedor por defecto).
-    const { clientSecret, piId } = await this.stripe.createPaymentIntent(
-      order.totalCents,
-      order.id,
-      tenantId,
-    );
-    await this.prisma.order.update({
-      where: { id: order.id },
-      data: { stripePaymentIntentId: piId },
-    });
-    return {
-      orderId: order.id,
-      provider: 'STRIPE' as const,
-      clientSecret,
-      totalCents: order.totalCents,
-      summary,
-    };
+    try {
+      const { clientSecret, piId } = await this.stripe.createPaymentIntent(
+        order.totalCents,
+        order.id,
+        tenantId,
+      );
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { stripePaymentIntentId: piId },
+      });
+      return {
+        orderId: order.id,
+        provider: 'STRIPE' as const,
+        clientSecret,
+        totalCents: order.totalCents,
+        summary,
+      };
+    } catch (err) {
+      const isProd = this.config.get<string>('nodeEnv') === 'production';
+      if (isProd) {
+        this.logger.error(
+          `Fallo al crear PaymentIntent de Stripe para orden ${order.id}`,
+          err,
+        );
+        if (err instanceof HttpException) throw err;
+        throw new BadGatewayException(
+          'No se pudo inicializar el pago con Stripe. Intenta nuevamente.',
+        );
+      }
+
+      // En desarrollo/test local sin credenciales activas de Stripe,
+      // la orden ya fue persistida en Postgres y devolvemos su ID real.
+      return {
+        orderId: order.id,
+        provider: 'STRIPE' as const,
+        clientSecret: null,
+        totalCents: order.totalCents,
+        summary,
+      };
+    }
   }
 }

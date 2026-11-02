@@ -10,7 +10,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { MercadoPagoConfig, OAuth, Payment } from 'mercadopago';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { inngest } from '../inngest/inngest.client';
+import { OrderSettlementService } from '../orders/order-settlement.service';
 import type { MpPaymentInputDto } from '../orders/dto/create-order.dto';
 
 // El SDK de MercadoPago no tipa estos retornos de forma cómoda; declaramos lo
@@ -46,6 +46,7 @@ export class MercadoPagoService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
+    private readonly settlement: OrderSettlementService,
   ) {}
 
   private client(accessToken: string): MercadoPagoConfig {
@@ -340,46 +341,11 @@ export class MercadoPagoService {
     orderId: string,
     mpPaymentId: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      // Idempotencia: si el pago ya fue contabilizado, salir.
-      try {
-        await tx.mercadoPagoEvent.create({
-          data: { id: mpPaymentId, type: 'payment.approved' },
-        });
-      } catch {
-        return;
-      }
-
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        include: { items: true },
-      });
-      if (!order) return;
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: 'PAID', mpPaymentId },
-      });
-
-      for (const item of order.items) {
-        await tx.productVariant.updateMany({
-          where: { id: item.variantId, stock: { gt: 0 } },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
-
-      if (order.discountCode) {
-        await tx.discountCode.updateMany({
-          where: { tenantId: order.tenantId, code: order.discountCode },
-          data: { timesRedeemed: { increment: 1 } },
-        });
-      }
+    await this.settlement.settlePaidOrder(orderId, {
+      provider: 'MERCADOPAGO',
+      eventId: mpPaymentId,
+      eventType: 'payment.approved',
+      mpPaymentId,
     });
-
-    try {
-      await inngest.send({ name: 'order/created', data: { orderId } });
-    } catch (err) {
-      this.logger.error('inngest.send order/created falló', err);
-    }
   }
 }

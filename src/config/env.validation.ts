@@ -60,6 +60,7 @@ export const envValidationSchema = Joi.object({
 
   REDIS_URL: Joi.string().allow('').optional(),
   RUN_SEED: Joi.string().allow('').optional(),
+  ENABLE_SWAGGER: Joi.string().allow('').optional(),
   PLATFORM_OWNER_EMAIL: Joi.string().email().allow('').optional(),
 });
 

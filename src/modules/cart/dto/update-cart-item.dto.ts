@@ -12,4 +12,3 @@ export class UpdateCartItemDto {
   @Max(99)
   quantity!: number;
 }
-

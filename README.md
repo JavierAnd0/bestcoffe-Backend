@@ -110,8 +110,7 @@ mutaciones se auditan (`AuditInterceptor`) y revalidan el front:
 ## Estado
 
 - ✅ **Fase 0** — scaffold, Prisma + schema completo, guards/interceptors,
-  módulos esqueleto, auth operador, Swagger, seed, endpoint Inngest.
-- ✅ **Fase 2 (backend)** — endpoints del storefront, verificados end-to-end.
-- 🔄 **Fase 3** — ✅ admin productos/variantes/imágenes, ✅ reseñas, ✅ revalidación ISR.
-  ⬜ Falta: colecciones, pedidos, suscripciones, contenido, promos, config, auditoría (vista), roles.
-- ⬜ **Fase 2/4** — Stripe Connect + checkout + motor de suscripciones (Inngest).
+  módulos esqueleto, auth operador (magic link), Swagger, seed, endpoint Inngest.
+- ✅ **Fase 2 (Storefront & Auth Cliente)** — catálogo, colecciones, quiz, carrito persistente, reseñas, registro/login Argon2id con bloqueo anti-fuerza bruta, recuperación de contraseña (`forgot-password` / `reset-password`), sincronización protegida con Neon Auth (`InternalSecretGuard`) y Cloudflare Turnstile.
+- ✅ **Fase 3 (Admin & Superadmin)** — productos/variantes/imágenes, colecciones, pedidos (con correos transaccionales al despachar y cancelar + restitución de stock), suscripciones, contenido, promociones, configuración, facturación/comisiones, auditoría, miembros/roles y revalidación ISR.
+- ✅ **Fase 4 (Pagos & Jobs)** — MercadoPago OAuth Marketplace + Checkout transparente, Stripe PaymentIntents & SetupIntents, motor de renovación de suscripciones y confirmación de compra con Inngest + Resend.

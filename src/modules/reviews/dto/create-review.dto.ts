@@ -42,4 +42,11 @@ export class CreateReviewDto {
   @MinLength(3)
   @MaxLength(2000)
   body!: string;
+
+  @ApiPropertyOptional({
+    description: 'Token de verificación emitido por Cloudflare Turnstile',
+  })
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }

@@ -25,4 +25,3 @@ export class CustomerCartResponseDto extends CartPriceResponseDto {
   })
   rawItems!: CustomerCartItemDto[];
 }
-

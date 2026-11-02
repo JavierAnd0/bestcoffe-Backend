@@ -33,12 +33,23 @@ export class MailService {
     const from =
       this.config.get<string>('resend.from') ?? 'noreply@example.com';
 
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
     });
+
+    if (error) {
+      this.logger.error(
+        `[Resend Error] No se pudo enviar correo a "${opts.to}": ${error.message}`,
+      );
+      this.logger.warn(`[Fallback Link] ${opts.fallbackLog}`);
+    } else {
+      this.logger.log(
+        `[Resend OK] Correo "${opts.subject}" enviado a ${opts.to} (id: ${data?.id})`,
+      );
+    }
   }
 
   /** Magic link de acceso para operadores (panel admin / superadmin). */
@@ -79,6 +90,28 @@ export class MailService {
            El enlace vence en 24 horas.</p>
         <p><a href="${link}">Verificar mi correo</a></p>
         <p>Si no creaste esta cuenta, ignora este mensaje.</p>
+      `,
+    });
+  }
+
+  /** Recuperación de contraseña para clientes del storefront. */
+  async sendCustomerPasswordReset(
+    to: string,
+    name: string | null | undefined,
+    link: string,
+  ): Promise<void> {
+    const greeting = name ? `Hola ${name}` : 'Hola';
+    await this.send({
+      to,
+      subject: 'Restablece tu contraseña',
+      fallbackLog: `Password reset link for ${to}: ${link}`,
+      html: `
+        <p>${greeting},</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña.
+           Haz clic en el siguiente enlace para elegir una nueva clave.
+           El enlace vence en 1 hora y solo puede usarse una vez.</p>
+        <p><a href="${link}">Restablecer mi contraseña</a></p>
+        <p>Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
       `,
     });
   }
@@ -174,6 +207,58 @@ export class MailService {
           <p style="margin-top:24px; font-size:13px; color:#777;">
             Te notificaremos en cuanto tu paquete sea despachado con la información de rastreo.
           </p>
+        </div>
+      `,
+    });
+  }
+
+  /** Notificación de pedido despachado (SHIPPED) con enlace de rastreo opcional. */
+  async sendOrderShipped(opts: {
+    to: string;
+    customerName: string | null;
+    orderId: string;
+    storeName: string;
+    trackingUrl?: string | null;
+  }): Promise<void> {
+    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const shortId = opts.orderId.slice(-6).toUpperCase();
+    const trackingBlock = opts.trackingUrl
+      ? `<p style="margin-top:16px;"><a href="${opts.trackingUrl}" style="display:inline-block; padding:10px 18px; background:#111; color:#fff; text-decoration:none; border-radius:4px;">Rastrear mi envío</a></p>`
+      : `<p style="margin-top:16px;">Pronto recibirás tu paquete en la dirección indicada.</p>`;
+
+    await this.send({
+      to: opts.to,
+      subject: `¡Tu pedido #${shortId} de ${opts.storeName} está en camino!`,
+      fallbackLog: `Order shipped for ${opts.to} (Order: ${opts.orderId}, Tracking: ${opts.trackingUrl ?? 'N/A'})`,
+      html: `
+        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
+          <h2>¡Tu café va en camino!</h2>
+          <p>${greeting}, tu pedido <strong>#${shortId}</strong> en <strong>${opts.storeName}</strong> ha sido despachado.</p>
+          ${trackingBlock}
+        </div>
+      `,
+    });
+  }
+
+  /** Notificación de pedido cancelado (CANCELLED). */
+  async sendOrderCancelled(opts: {
+    to: string;
+    customerName: string | null;
+    orderId: string;
+    storeName: string;
+  }): Promise<void> {
+    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const shortId = opts.orderId.slice(-6).toUpperCase();
+
+    await this.send({
+      to: opts.to,
+      subject: `Tu pedido #${shortId} en ${opts.storeName} ha sido cancelado`,
+      fallbackLog: `Order cancelled for ${opts.to} (Order: ${opts.orderId})`,
+      html: `
+        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
+          <h2>Pedido cancelado</h2>
+          <p>${greeting}, te informamos que tu pedido <strong>#${shortId}</strong> en <strong>${opts.storeName}</strong> ha sido cancelado.</p>
+          <p>Si ya habías realizado el pago, el reembolso se procesará según los tiempos de tu entidad bancaria. Si tienes dudas, contáctanos respondiendo a la tienda.</p>
         </div>
       `,
     });
