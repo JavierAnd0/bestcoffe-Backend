@@ -470,6 +470,21 @@ async function main() {
     },
   });
 
+
+  // ── Sedes de la demo (idempotente por nombre) ───────────────────────────
+  const locationsSeed = [
+    { name: 'ORÍGEN Chapinero', address: 'Cra 13 #57-32', city: 'Bogotá', lat: 4.6443, lng: -74.0628, hours: 'Lun–Dom · 7:00–20:00', phone: '+57 (601) 234-5678' },
+    { name: 'ORÍGEN Usaquén', address: 'Cl 119 #6-15', city: 'Bogotá', lat: 4.6957, lng: -74.0312, hours: 'Mar–Dom · 8:00–19:00', phone: '+57 (601) 345-6789' },
+    { name: 'ORÍGEN La Candelaria', address: 'Cl 11 #4-29', city: 'Bogotá', lat: 4.5976, lng: -74.0734, hours: 'Lun–Sáb · 8:00–18:00', phone: '+57 (601) 456-7890' },
+  ];
+  for (const l of locationsSeed) {
+    const exists = await prisma.storeLocation.findFirst({
+      where: { tenantId: tenant.id, name: l.name },
+      select: { id: true },
+    });
+    if (!exists) await prisma.storeLocation.create({ data: { tenantId: tenant.id, ...l } });
+  }
+
   // Newsletter de la tienda demo: invitación discreta + cupón de bienvenida real.
   // (Idempotente: se aplica también a bases ya sembradas.)
   await prisma.tenant.update({
