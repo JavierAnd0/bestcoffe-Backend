@@ -104,28 +104,51 @@ export class CheckoutService {
     // 3. Cobro según el proveedor configurado en la tienda.
     if (tenant.paymentProvider === 'MERCADOPAGO') {
       if (!tenant.mpConnected) {
+        await this.markOrderFailed(
+          order.id,
+          'La tienda no tiene MercadoPago conectado',
+        );
         throw new BadRequestException(
           'La tienda no tiene MercadoPago conectado',
         );
       }
       if (!dto.payment) {
+        await this.markOrderFailed(
+          order.id,
+          'Faltan los datos de pago (tarjeta)',
+        );
         throw new BadRequestException('Faltan los datos de pago (tarjeta)');
       }
-      // createPayment persiste mpPaymentId en la orden (vía applyPaymentStatus),
-      // de modo que el webhook pueda reconciliar el estado por ese id.
-      const result = await this.mercadopago.createPayment(
-        order.id,
-        dto.payment,
-      );
-      return {
-        orderId: order.id,
-        provider: 'MERCADOPAGO' as const,
-        paymentStatus: result.status,
-        statusDetail: result.statusDetail,
-        mpPaymentId: result.mpPaymentId,
-        totalCents: order.totalCents,
-        summary,
-      };
+      try {
+        // createPayment persiste mpPaymentId en la orden (vía applyPaymentStatus),
+        // de modo que el webhook pueda reconciliar el estado por ese id.
+        const result = await this.mercadopago.createPayment(
+          order.id,
+          dto.payment,
+        );
+        return {
+          orderId: order.id,
+          provider: 'MERCADOPAGO' as const,
+          paymentStatus: result.status,
+          statusDetail: result.statusDetail,
+          mpPaymentId: result.mpPaymentId,
+          totalCents: order.totalCents,
+          summary,
+        };
+      } catch (err) {
+        this.logger.error(
+          `Fallo al crear el pago de MercadoPago para orden ${order.id}`,
+          err,
+        );
+        await this.markOrderFailed(
+          order.id,
+          'Fallo al crear el pago de MercadoPago',
+        );
+        if (err instanceof HttpException) throw err;
+        throw new BadGatewayException(
+          'No se pudo procesar el pago con MercadoPago. Intenta nuevamente.',
+        );
+      }
     }
 
     // Stripe (proveedor por defecto).
@@ -153,6 +176,13 @@ export class CheckoutService {
           `Fallo al crear PaymentIntent de Stripe para orden ${order.id}`,
           err,
         );
+        // La orden ya fue creada en PENDING; sin un PaymentIntent asociado
+        // quedaría huérfana sin posibilidad de cobro. La marcamos FAILED de
+        // inmediato para que no se confunda con una orden en curso.
+        await this.markOrderFailed(
+          order.id,
+          'Fallo al crear el PaymentIntent de Stripe',
+        );
         if (err instanceof HttpException) throw err;
         throw new BadGatewayException(
           'No se pudo inicializar el pago con Stripe. Intenta nuevamente.',
@@ -168,6 +198,29 @@ export class CheckoutService {
         totalCents: order.totalCents,
         summary,
       };
+    }
+  }
+
+  /**
+   * Marca una orden PENDING como FAILED cuando la creación del pago falla
+   * tras haberla persistido, evitando dejarla huérfana sin resolución.
+   * No propaga errores: es una compensación best-effort, el error original
+   * ya se loguea y se lanza en el caller.
+   */
+  private async markOrderFailed(
+    orderId: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.order.update({
+        where: { id: orderId },
+        data: { paymentStatus: 'FAILED' },
+      });
+    } catch (err) {
+      this.logger.error(
+        `No se pudo marcar como FAILED la orden huérfana ${orderId} (motivo original: ${reason})`,
+        err,
+      );
     }
   }
 }
