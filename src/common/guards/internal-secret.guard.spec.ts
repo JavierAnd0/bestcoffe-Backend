@@ -10,10 +10,23 @@ describe('InternalSecretGuard', () => {
       }),
     }) as unknown as ExecutionContext;
 
-  it('permite el paso en desarrollo cuando REVALIDATE_SECRET está vacío', () => {
+  it('rechaza en desarrollo cuando REVALIDATE_SECRET está vacío (fail-closed fuera de test)', () => {
     const config = {
       get: jest.fn((key: string) =>
         key === 'revalidate.secret' ? '' : 'development',
+      ),
+    } as unknown as ConfigService;
+
+    const guard = new InternalSecretGuard(config);
+    expect(() => guard.canActivate(makeContext({}))).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('permite el paso únicamente en NODE_ENV=test cuando REVALIDATE_SECRET está vacío', () => {
+    const config = {
+      get: jest.fn((key: string) =>
+        key === 'revalidate.secret' ? '' : 'test',
       ),
     } as unknown as ConfigService;
 

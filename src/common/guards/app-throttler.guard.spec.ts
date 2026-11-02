@@ -13,7 +13,7 @@ describe('AppThrottlerGuard', () => {
   });
 
   describe('getTracker', () => {
-    it('debe priorizar la cabecera cf-connecting-ip de Cloudflare', async () => {
+    it('debe priorizar req.ip resuelto por Express (trust proxy) sobre cualquier cabecera', async () => {
       const mockReq = {
         headers: {
           'cf-connecting-ip': '203.0.113.195',
@@ -22,22 +22,22 @@ describe('AppThrottlerGuard', () => {
         ip: '10.0.0.1',
       };
 
-      // Invocamos el método protegido getTracker
       const tracker = await (
         guard as unknown as {
           getTracker: (req: unknown) => Promise<string>;
         }
       ).getTracker(mockReq);
 
-      expect(tracker).toBe('203.0.113.195');
+      expect(tracker).toBe('10.0.0.1');
     });
 
-    it('debe usar la primera IP de x-forwarded-for si cf-connecting-ip no está', async () => {
+    it('debe usar x-forwarded-for cuando Express no resolvió req.ip/req.ips', async () => {
       const mockReq = {
         headers: {
+          'cf-connecting-ip': '203.0.113.195',
           'x-forwarded-for': '198.51.100.1, 10.0.0.2',
         },
-        ip: '10.0.0.1',
+        ip: undefined,
       };
 
       const tracker = await (
@@ -47,6 +47,23 @@ describe('AppThrottlerGuard', () => {
       ).getTracker(mockReq);
 
       expect(tracker).toBe('198.51.100.1');
+    });
+
+    it('debe usar cf-connecting-ip solo como último recurso si no hay req.ip ni x-forwarded-for', async () => {
+      const mockReq = {
+        headers: {
+          'cf-connecting-ip': '203.0.113.195',
+        },
+        ip: undefined,
+      };
+
+      const tracker = await (
+        guard as unknown as {
+          getTracker: (req: unknown) => Promise<string>;
+        }
+      ).getTracker(mockReq);
+
+      expect(tracker).toBe('203.0.113.195');
     });
 
     it('debe usar req.ip como fallback si no hay cabeceras de proxy', async () => {
