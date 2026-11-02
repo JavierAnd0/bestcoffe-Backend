@@ -336,6 +336,18 @@ async function main() {
     },
   });
 
+  // Newsletter de la tienda demo: invitación discreta + cupón de bienvenida real.
+  // (Idempotente: se aplica también a bases ya sembradas.)
+  await prisma.tenant.update({
+    where: { id: tenant.id },
+    data: {
+      features: {
+        ...((tenant.features as Record<string, unknown>) ?? {}),
+        newsletter: { popupEnabled: true, welcomeCode: 'BIENVENIDO10' },
+      },
+    },
+  });
+
   console.log(`✅ Seed completo: tenant=${tenant.slug}, productos=${createdProducts.length}`);
 }
 

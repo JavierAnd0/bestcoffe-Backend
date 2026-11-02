@@ -25,6 +25,7 @@ import { BlogModule } from './modules/blog/blog.module';
 import { QuizModule } from './modules/quiz/quiz.module';
 import { CartModule } from './modules/cart/cart.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { NewsletterModule } from './modules/newsletter/newsletter.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
@@ -100,6 +101,7 @@ import { MailModule } from './modules/mail/mail.module';
     QuizModule,
     CartModule,
     ReviewsModule,
+    NewsletterModule,
     CustomersModule,
     OrdersModule,
     SubscriptionsModule,

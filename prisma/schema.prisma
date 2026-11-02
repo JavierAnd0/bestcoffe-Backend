@@ -141,14 +141,14 @@ enum SiteContentKind {
 // ─────────────────────────────────────────────────────────────────────────
 
 model Tenant {
-  id                     String          @id @default(cuid())
-  slug                   String          @unique
+  id                     String  @id @default(cuid())
+  slug                   String  @unique
   name                   String
   stripeConnectAccountId String?
   platformSubscriptionId String?
-  tier                   Tier            @default(STARTER)
-  features               Json            @default("{}")
-  branding               Json            @default("{}")
+  tier                   Tier    @default(STARTER)
+  features               Json    @default("{}")
+  branding               Json    @default("{}")
 
   // ── Facturación del tenant hacia la plataforma (gestión manual) ──────────
   billingType      TenantBillingType   @default(SUBSCRIPTION)
@@ -190,22 +190,23 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  domains       TenantDomain[]
-  memberships   TenantMembership[]
-  customers     Customer[]
-  products      Product[]
-  collections   Collection[]
-  orders        Order[]
-  subscriptions Subscription[]
-  gifts         GiftSubscription[]
-  discountCodes DiscountCode[]
-  reviews       Review[]
-  siteContent   SiteContent[]
-  blogPosts     BlogPost[]
-  brewGuides    BrewGuide[]
-  locations     StoreLocation[]
-  auditLogs     AuditLog[]
-  cartItems     CartItem[]
+  domains               TenantDomain[]
+  memberships           TenantMembership[]
+  customers             Customer[]
+  products              Product[]
+  collections           Collection[]
+  orders                Order[]
+  subscriptions         Subscription[]
+  gifts                 GiftSubscription[]
+  discountCodes         DiscountCode[]
+  reviews               Review[]
+  siteContent           SiteContent[]
+  blogPosts             BlogPost[]
+  brewGuides            BrewGuide[]
+  locations             StoreLocation[]
+  auditLogs             AuditLog[]
+  cartItems             CartItem[]
+  newsletterSubscribers NewsletterSubscriber[]
 }
 
 model TenantDomain {
@@ -252,7 +253,7 @@ model TenantMembership {
 // ─────────────────────────────────────────────────────────────────────────
 
 model Customer {
-  id               String   @id @default(cuid())
+  id               String  @id @default(cuid())
   tenantId         String
   email            String
   name             String?
@@ -263,15 +264,20 @@ model Customer {
   // Auth de storefront
   passwordHash           String?
   emailVerified          Boolean   @default(false)
-  emailVerifyToken       String?   // sha-256 del token raw enviado por correo
+  emailVerifyToken       String? // sha-256 del token raw enviado por correo
   emailVerifyExpiresAt   DateTime?
-  passwordResetToken     String?   // sha-256 del token raw para restablecer clave
+  passwordResetToken     String? // sha-256 del token raw para restablecer clave
   passwordResetExpiresAt DateTime?
   failedAttempts         Int       @default(0)
   lockedUntil            DateTime?
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // Newsletter: quien tiene cuenta queda suscrito por defecto y puede darse de
+  // baja desde "Mis datos". Se registra cuándo cambió por última vez.
+  newsletterOptIn     Boolean   @default(true)
+  newsletterUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   addresses     Address[]
@@ -381,7 +387,7 @@ model ProductVariant {
   createdAt                 DateTime    @default(now())
   updatedAt                 DateTime    @updatedAt
 
-  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
   gifts         GiftSubscription[]
   cartItems     CartItem[]
@@ -460,7 +466,7 @@ model Order {
 }
 
 model OrderItem {
-  id          String @id @default(cuid())
+  id          String      @id @default(cuid())
   tenantId    String
   orderId     String
   variantId   String
@@ -498,9 +504,9 @@ model Subscription {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  variant  ProductVariant @relation(fields: [variantId], references: [id])
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  variant  ProductVariant    @relation(fields: [variantId], references: [id])
   orders   Order[]
   gift     GiftSubscription?
 
@@ -684,4 +690,23 @@ model MercadoPagoEvent {
   id          String   @id // id de la notificación (data.id) de MercadoPago
   type        String
   processedAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Newsletter — visitantes SIN cuenta que se suscriben desde el storefront.
+// (Los clientes con cuenta usan Customer.newsletterOptIn.)
+// ─────────────────────────────────────────────────────────────────────────
+
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  tenantId       String
+  email          String // siempre en minúsculas
+  source         String? // popup | footer | ...
+  subscribedAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
 }

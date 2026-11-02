@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveFeatures } from '../../common/features/tier-features';
+import { resolvePublicNewsletterConfig } from '../newsletter/newsletter-config';
 
 @Injectable()
 export class TenantsService {
@@ -28,6 +29,17 @@ export class TenantsService {
     // `features` resueltas = base del tier + overrides del tenant. El storefront
     // las usa para mostrar/ocultar carrito, login, suscripciones, etc.
     const { features: overrides, ...rest } = tenant;
-    return { ...rest, features: resolveFeatures(tenant.tier, overrides) };
+    // Newsletter: config pública (popup + oferta de bienvenida vigente). Va
+    // aparte de `features` porque es un ajuste operativo, no una capacidad de plan.
+    const newsletter = await resolvePublicNewsletterConfig(
+      this.prisma,
+      tenantId,
+      overrides,
+    );
+    return {
+      ...rest,
+      features: resolveFeatures(tenant.tier, overrides),
+      newsletter,
+    };
   }
 }
