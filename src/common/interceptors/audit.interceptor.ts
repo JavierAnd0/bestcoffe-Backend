@@ -91,8 +91,42 @@ export class AuditInterceptor implements NestInterceptor {
 
   private safeBody(body: unknown): object {
     if (!body || typeof body !== 'object') return {};
-    const redacted = { ...(body as Record<string, unknown>) };
-    for (const k of ['password', 'token', 'secret']) delete redacted[k];
-    return redacted;
+    return this.redactDeep(body) as object;
+  }
+
+  /**
+   * Redacta recursivamente (objetos anidados y arrays) cualquier clave cuyo
+   * nombre (case-insensitive) coincida con datos sensibles, para que no
+   * queden expuestos en AuditLog.diff sin importar en qué nivel aniden.
+   */
+  private static readonly SENSITIVE_KEYS = new Set([
+    'password',
+    'token',
+    'secret',
+    'cardtoken',
+    'payment',
+    'cvv',
+    'cvc',
+    'authorization',
+  ]);
+
+  private redactDeep(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.redactDeep(item));
+    }
+    if (value && typeof value === 'object') {
+      const result: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (AuditInterceptor.SENSITIVE_KEYS.has(key.toLowerCase())) {
+          result[key] = '[REDACTED]';
+        } else {
+          result[key] = this.redactDeep(val);
+        }
+      }
+      return result;
+    }
+    return value;
   }
 }
