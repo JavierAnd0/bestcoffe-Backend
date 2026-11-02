@@ -52,6 +52,7 @@ enum ProductType {
   BLEND
   SINGLE_ORIGIN
   DECAF
+  ACCESSORY // equipos y accesorios de barismo (no son café)
 }
 
 enum ProductStatus {

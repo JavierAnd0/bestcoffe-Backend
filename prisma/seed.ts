@@ -177,6 +177,140 @@ async function main() {
     createdProducts.push(product);
   }
 
+
+  // ── Accesorios y equipos de barismo (datos reales de la demo, comprables) ──
+  const accessoriesSeed = [
+    {
+      slug: "molino-manual-precision",
+      name: "Molino Manual Conical Burr",
+      origin: "Equipo de precisión",
+      description: "Diseñado para los entusiastas del café que buscan una molienda perfectamente homogénea en casa o de viaje. Su doble rodamiento estabiliza el eje central eliminando la fricción y el polvo excesivo.",
+      details: ["Acero inox 40mm", "36 clics de ajuste", "Cuerpo aluminio"],
+      badges: ["DESTACADO"],
+      image: "/img/products/molino-1.jpg",
+      sizeGrams: 450,
+      price: 280000,
+      stock: 15,
+      collections: ["accesorios", "molinos", "bestsellers"],
+    },
+    {
+      slug: "tetera-cuello-cisne",
+      name: "Tetera Cuello de Cisne Gooseneck",
+      origin: "Vertido de precisión",
+      description: "Control absoluto de la tasa de vertido y turbulencia en tus preparaciones de V60, Chemex o Kalita. El termómetro incorporado te permite verter exactamente en la temperatura óptima de extracción (90°–93°C).",
+      details: ["1.0 Litro", "Acero 304", "Termómetro integrado"],
+      badges: ["BARISMO"],
+      image: "/img/products/tetera-1.jpg",
+      sizeGrams: 550,
+      price: 165000,
+      stock: 20,
+      collections: ["accesorios", "teteras"],
+    },
+    {
+      slug: "taza-ceramica-artesanal",
+      name: "Taza Cerámica Artesanal 250 ml",
+      origin: "Artesanal · Colombia",
+      description: "Moldeada a torno y horneada a 1.240°C para una durabilidad excepcional. Su diseño orgánico se adapta cómodamente a las manos, ideal para capuchino, flat white o tu taza matutina de café filtrado.",
+      details: ["250 ml", "Cerámica gres", "Hecha a mano"],
+      badges: ["ARTESANAL"],
+      image: "/img/products/taza-1.jpg",
+      sizeGrams: 280,
+      price: 42000,
+      stock: 40,
+      collections: ["accesorios", "tazas"],
+    },
+    {
+      slug: "gotero-ceramico-v60",
+      name: "Gotero Cerámico V60 de Extracción",
+      origin: "Métodos manuales",
+      description: "El método favorito de baristas profesionales alrededor del mundo. Su ángulo de 60 grados y orificio central amplio te dan el control total de la velocidad del flujo de extracción.",
+      details: ["Tamaño 02", "Cerámica esmaltada", "1-4 Tazas"],
+      badges: ["MÉTODOS"],
+      image: "/img/products/v60-1.jpg",
+      sizeGrams: 320,
+      price: 78000,
+      stock: 25,
+      collections: ["accesorios", "metodos"],
+    },
+    {
+      slug: "bascula-digital-barista",
+      name: "Báscula Digital con Temporizador",
+      origin: "Herramienta de precisión",
+      description: "Báscula compacta con almohadilla de silicona antideslizante resistente al calor y pantalla LED retroiluminada de alta visibilidad. Batería recargable vía USB-C.",
+      details: ["0.1 g precisión", "Cronómetro", "USB-C"],
+      badges: ["PRECISIÓN"],
+      image: "/img/products/bascula-1.jpg",
+      sizeGrams: 300,
+      price: 125000,
+      stock: 18,
+      collections: ["accesorios"],
+    },
+  ];
+
+  const accessoryCollections: Record<string, string> = {
+    accesorios: 'Accesorios y Equipos',
+    molinos: 'Molinos',
+    teteras: 'Teteras',
+    tazas: 'Tazas',
+    metodos: 'Métodos de preparación',
+  };
+  const collectionIds: Record<string, string> = {};
+  let collectionPos = 10;
+  for (const [slug, name] of Object.entries(accessoryCollections)) {
+    const c = await prisma.collection.upsert({
+      where: { tenantId_slug: { tenantId: tenant.id, slug } },
+      update: {},
+      create: { tenantId: tenant.id, slug, name, type: 'MANUAL', position: collectionPos++ },
+    });
+    collectionIds[slug] = c.id;
+  }
+
+  for (const a of accessoriesSeed) {
+    const product = await prisma.product.upsert({
+      where: { tenantId_slug: { tenantId: tenant.id, slug: a.slug } },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        slug: a.slug,
+        name: a.name,
+        type: ProductType.ACCESSORY,
+        origin: a.origin,
+        roastLevel: 0,
+        flavorNotes: a.details,
+        badges: a.badges,
+        status: ProductStatus.ACTIVE,
+        subscriptionAvailability: SubAvail.NO,
+        description: a.description,
+        images: {
+          create: [
+            { tenantId: tenant.id, url: a.image, alt: a.name, position: 0 },
+          ],
+        },
+        variants: {
+          create: [
+            {
+              tenantId: tenant.id,
+              sizeGrams: a.sizeGrams,
+              grind: GrindFormat.WHOLE_BEAN,
+              priceOneTime: COP(a.price),
+              priceSubscription: null,
+              stock: a.stock,
+            },
+          ],
+        },
+      },
+    });
+    for (const cs of a.collections) {
+      const collectionId = collectionIds[cs];
+      if (!collectionId) continue; // p.ej. "bestsellers" vive en Más Vendidos
+      await prisma.collectionProduct.upsert({
+        where: { collectionId_productId: { collectionId, productId: product.id } },
+        update: {},
+        create: { collectionId, productId: product.id, position: 0 },
+      });
+    }
+  }
+
   // ── Colecciones ──────────────────────────────────────────────────────────
   await prisma.collection.upsert({
     where: { tenantId_slug: { tenantId: tenant.id, slug: 'origenes-unicos' } },
