@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from '@node-rs/argon2';
@@ -8,22 +8,24 @@ import { MailService } from '../mail/mail.service';
 
 jest.mock('@node-rs/argon2');
 
-describe('CustomerAuthService - Lockout & Brute Force Protection', () => {
+describe('CustomerAuthService - Lockout, Brute Force & Password Reset', () => {
   let service: CustomerAuthService;
   let prisma: {
     customer: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
     };
   };
   let jwt: { signAsync: jest.Mock };
   let config: { get: jest.Mock };
-  let mail: Partial<MailService>;
+  let mail: { sendCustomerPasswordReset: jest.Mock };
 
   beforeEach(() => {
     prisma = {
       customer: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
     };
@@ -33,7 +35,9 @@ describe('CustomerAuthService - Lockout & Brute Force Protection', () => {
     config = {
       get: jest.fn().mockReturnValue('mock-secret'),
     };
-    mail = {};
+    mail = {
+      sendCustomerPasswordReset: jest.fn().mockResolvedValue(undefined),
+    };
 
     service = new CustomerAuthService(
       prisma as unknown as PrismaService,
@@ -158,5 +162,60 @@ describe('CustomerAuthService - Lockout & Brute Force Protection', () => {
         lockedUntil: null,
       },
     });
+  });
+
+  it('forgotPassword: genera token y envía correo si el cliente existe, devolviendo respuesta genérica', async () => {
+    prisma.customer.findUnique.mockResolvedValue({
+      id: 'cust-1',
+      email: 'test@cafe.co',
+      name: 'Ana',
+    });
+
+    const res = await service.forgotPassword('tenant-1', {
+      email: 'test@cafe.co',
+    });
+
+    expect(res.message).toContain('Si el correo está registrado');
+    expect(prisma.customer.update).toHaveBeenCalledTimes(1);
+    expect(mail.sendCustomerPasswordReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('resetPassword: actualiza contraseña, limpia token y desbloquea cuenta', async () => {
+    prisma.customer.findFirst.mockResolvedValue({
+      id: 'cust-1',
+      email: 'test@cafe.co',
+    });
+    (argon2.hash as jest.Mock).mockResolvedValue('$argon2id$newHash');
+
+    const res = await service.resetPassword('tenant-1', {
+      email: 'test@cafe.co',
+      token: 'raw-token',
+      newPassword: 'NuevaPassword123',
+    });
+
+    expect(res.message).toContain('actualizada correctamente');
+    expect(prisma.customer.update).toHaveBeenCalledWith({
+      where: { id: 'cust-1' },
+      data: {
+        passwordHash: '$argon2id$newHash',
+        emailVerified: true,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+        failedAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+  });
+
+  it('resetPassword: lanza BadRequestException si el token es inválido o expiró', async () => {
+    prisma.customer.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.resetPassword('tenant-1', {
+        email: 'test@cafe.co',
+        token: 'invalid-token',
+        newPassword: 'NuevaPassword123',
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

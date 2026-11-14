@@ -14,12 +14,19 @@ import type { RegisterCustomerDto } from './dto/register-customer.dto';
 import type { VerifyEmailDto } from './dto/verify-email.dto';
 import type { CustomerLoginDto } from './dto/customer-login.dto';
 import type { SyncNeonCustomerDto } from './dto/sync-neon-customer.dto';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
+import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { CustomerJwtPayload } from '../../common/guards/customer-auth.guard';
 
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 h
 const SESSION_TTL = '30d';
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos tras 5 intentos fallidos
+const GENERIC_RESET_RESPONSE = {
+  message:
+    'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.',
+};
 
 @Injectable()
 export class CustomerAuthService {
@@ -174,6 +181,81 @@ export class CustomerAuthService {
     };
   }
 
+  // ─── Forgot / Reset Password ─────────────────────────────────────────────
+
+  /**
+   * Genera un token de recuperación de un solo uso (1 h) y lo envía por correo.
+   * Responde siempre con un mensaje genérico para evitar enumeración de correos.
+   */
+  async forgotPassword(tenantId: string, dto: ForgotPasswordDto) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { tenantId_email: { tenantId, email: dto.email } },
+    });
+
+    if (customer) {
+      const { rawToken, hashedToken } = this.generateVerifyToken();
+      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          passwordResetToken: hashedToken,
+          passwordResetExpiresAt: expiresAt,
+        },
+      });
+
+      await this.sendPasswordResetEmail(
+        customer.email,
+        customer.name,
+        rawToken,
+      );
+    }
+
+    return GENERIC_RESET_RESPONSE;
+  }
+
+  /**
+   * Valida el token de recuperación, actualiza la contraseña con Argon2id,
+   * consume el token y limpia cualquier bloqueo de cuenta activo.
+   */
+  async resetPassword(tenantId: string, dto: ResetPasswordDto) {
+    const hashedToken = this.hashToken(dto.token);
+
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        tenantId,
+        email: dto.email,
+        passwordResetToken: hashedToken,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!customer) {
+      throw new BadRequestException(
+        'El enlace de recuperación es inválido o ha expirado.',
+      );
+    }
+
+    const passwordHash = await argon2Hash(dto.newPassword);
+
+    await this.prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        passwordHash,
+        emailVerified: true,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+        failedAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+
+    return {
+      message:
+        'Tu contraseña ha sido actualizada correctamente. Ya puedes iniciar sesión.',
+    };
+  }
+
   // ─── Sync Neon Auth / OAuth ──────────────────────────────────────────────
 
   /**
@@ -249,5 +331,16 @@ export class CustomerAuthService {
       this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
     const link = `${webUrl}/cuenta/verificar-email?token=${rawToken}&email=${encodeURIComponent(email)}`;
     await this.mail.sendCustomerVerification(email, name, link);
+  }
+
+  private async sendPasswordResetEmail(
+    email: string,
+    name: string | null | undefined,
+    rawToken: string,
+  ): Promise<void> {
+    const webUrl =
+      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const link = `${webUrl}/cuenta/restablecer-clave?token=${rawToken}&email=${encodeURIComponent(email)}`;
+    await this.mail.sendCustomerPasswordReset(email, name, link);
   }
 }

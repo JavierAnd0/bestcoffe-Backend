@@ -1,10 +1,13 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
+import { OrderSettlementService } from './order-settlement.service';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -29,7 +32,13 @@ const ORDER_DETAIL_INCLUDE = {
 
 @Injectable()
 export class AdminOrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(AdminOrdersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+    private readonly settlement: OrderSettlementService,
+  ) {}
 
   /** Listado admin con filtros y paginación keyset por createdAt/id. */
   async list(tenantId: string, dto: ListOrdersDto) {
@@ -72,11 +81,12 @@ export class AdminOrdersService {
     return order;
   }
 
-  /** Cambia el estado de fulfillment validando la transición. */
+  /** Cambia el estado de fulfillment validando la transición y notificando al cliente. */
   async updateStatus(tenantId: string, id: string, dto: UpdateOrderStatusDto) {
     const order = await this.ensure(tenantId, id);
+    const statusChanged = dto.status !== order.status;
 
-    if (dto.status !== order.status) {
+    if (statusChanged) {
       const allowed = ALLOWED_TRANSITIONS[order.status];
       if (!allowed.includes(dto.status)) {
         throw new BadRequestException(
@@ -91,53 +101,70 @@ export class AdminOrdersService {
       dto.status === OrderStatus.CANCELLED &&
       order.status !== OrderStatus.CANCELLED
     ) {
-      return this.prisma.$transaction(async (tx) => {
-        const fullOrder = await tx.order.findUnique({
-          where: { id },
-          include: { items: true },
-        });
-
-        if (fullOrder && fullOrder.paymentStatus === 'PAID') {
-          for (const item of fullOrder.items) {
-            await tx.productVariant.update({
-              where: { id: item.variantId },
-              data: { stock: { increment: item.quantity } },
-            });
-          }
-
-          if (fullOrder.discountCode) {
-            await tx.discountCode.updateMany({
-              where: {
-                tenantId: fullOrder.tenantId,
-                code: fullOrder.discountCode,
-                timesRedeemed: { gt: 0 },
-              },
-              data: { timesRedeemed: { decrement: 1 } },
-            });
-          }
-        }
-
-        return tx.order.update({
-          where: { id },
-          data: {
-            status: dto.status,
-            ...(dto.trackingUrl !== undefined && {
-              trackingUrl: dto.trackingUrl,
-            }),
+      const cancelledOrder =
+        await this.settlement.cancelOrderAndRestoreInventory(id, {
+          trackingUrl: dto.trackingUrl,
+          include: {
+            ...ORDER_DETAIL_INCLUDE,
+            tenant: { select: { name: true } },
           },
-          include: ORDER_DETAIL_INCLUDE,
         });
-      });
+
+      if (cancelledOrder.customer?.email) {
+        void this.mail
+          .sendOrderCancelled({
+            to: cancelledOrder.customer.email,
+            customerName: cancelledOrder.customer.name,
+            orderId: cancelledOrder.id,
+            storeName: cancelledOrder.tenant.name,
+          })
+          .catch((err: unknown) =>
+            this.logger.warn(
+              `No se pudo enviar correo de cancelación para orden ${cancelledOrder.id}: ${String(err)}`,
+            ),
+          );
+      }
+
+      const { tenant: _tenant, ...rest } = cancelledOrder;
+      void _tenant;
+      return rest;
     }
 
-    return this.prisma.order.update({
+    const updated = await this.prisma.order.update({
       where: { id },
       data: {
         status: dto.status,
         ...(dto.trackingUrl !== undefined && { trackingUrl: dto.trackingUrl }),
       },
-      include: ORDER_DETAIL_INCLUDE,
+      include: {
+        ...ORDER_DETAIL_INCLUDE,
+        tenant: { select: { name: true } },
+      },
     });
+
+    if (
+      statusChanged &&
+      dto.status === OrderStatus.SHIPPED &&
+      updated.customer?.email
+    ) {
+      void this.mail
+        .sendOrderShipped({
+          to: updated.customer.email,
+          customerName: updated.customer.name,
+          orderId: updated.id,
+          storeName: updated.tenant.name,
+          trackingUrl: updated.trackingUrl,
+        })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `No se pudo enviar correo de despacho para orden ${updated.id}: ${String(err)}`,
+          ),
+        );
+    }
+
+    const { tenant: _tenant, ...rest } = updated;
+    void _tenant;
+    return rest;
   }
 
   /** Ediciones administrativas (tracking, pago, notas internas). */

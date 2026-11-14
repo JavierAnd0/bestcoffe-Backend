@@ -6,6 +6,7 @@ import {
 import { Prisma, ProductStatus, SubAvail, SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
+import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -36,6 +37,7 @@ export class CustomerSubscriptionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
+    private readonly lifecycle: SubscriptionLifecycleService,
   ) {}
 
   async list(customerId: string, cursor?: string, limit = 20) {
@@ -142,76 +144,19 @@ export class CustomerSubscriptionsService {
     return { subscriptionId: sub.id, clientSecret };
   }
 
-  async pause(customerId: string, id: string) {
-    const sub = await this.ensureOwnership(customerId, id);
-    if (sub.status === SubStatus.CANCELLED) {
-      throw new BadRequestException(
-        'La suscripción está cancelada y no admite cambios',
-      );
-    }
-    if (sub.status === SubStatus.PAUSED) {
-      throw new BadRequestException('La suscripción ya está pausada');
-    }
-    return this.setStatus(id, SubStatus.PAUSED);
+  pause(customerId: string, id: string) {
+    return this.lifecycle.pause({ id, customerId }, SUB_SELECT);
   }
 
-  async resume(customerId: string, id: string) {
-    const sub = await this.ensureOwnership(customerId, id);
-    if (sub.status !== SubStatus.PAUSED) {
-      throw new BadRequestException('Solo se reanuda una suscripción pausada');
-    }
-    const data: Prisma.SubscriptionUpdateInput = { status: SubStatus.ACTIVE };
-    if (sub.nextShipAt.getTime() < Date.now()) {
-      data.nextShipAt = new Date(Date.now() + sub.frequencyDays * DAY_MS);
-    }
-    return this.prisma.subscription.update({
-      where: { id },
-      data,
-      select: SUB_SELECT,
-    });
+  resume(customerId: string, id: string) {
+    return this.lifecycle.resume({ id, customerId }, SUB_SELECT);
   }
 
-  async skipNext(customerId: string, id: string) {
-    const sub = await this.ensureOwnership(customerId, id);
-    if (sub.status !== SubStatus.ACTIVE) {
-      throw new BadRequestException(
-        'Solo se puede saltar el próximo envío de una suscripción activa',
-      );
-    }
-    return this.prisma.subscription.update({
-      where: { id },
-      data: {
-        status: SubStatus.SKIPPED_NEXT,
-        nextShipAt: new Date(
-          sub.nextShipAt.getTime() + sub.frequencyDays * DAY_MS,
-        ),
-      },
-      select: SUB_SELECT,
-    });
+  skipNext(customerId: string, id: string) {
+    return this.lifecycle.skipNext({ id, customerId }, SUB_SELECT);
   }
 
-  async cancel(customerId: string, id: string) {
-    const sub = await this.ensureOwnership(customerId, id);
-    if (sub.status === SubStatus.CANCELLED) {
-      throw new BadRequestException('La suscripción ya está cancelada');
-    }
-    return this.setStatus(id, SubStatus.CANCELLED);
-  }
-
-  private setStatus(id: string, status: SubStatus) {
-    return this.prisma.subscription.update({
-      where: { id },
-      data: { status },
-      select: SUB_SELECT,
-    });
-  }
-
-  private async ensureOwnership(customerId: string, id: string) {
-    const sub = await this.prisma.subscription.findFirst({
-      where: { id, customerId },
-      select: { id: true, status: true, nextShipAt: true, frequencyDays: true },
-    });
-    if (!sub) throw new NotFoundException('Suscripción no encontrada');
-    return sub;
+  cancel(customerId: string, id: string) {
+    return this.lifecycle.cancel({ id, customerId }, SUB_SELECT);
   }
 }

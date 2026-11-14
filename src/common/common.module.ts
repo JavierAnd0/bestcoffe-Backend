@@ -6,8 +6,10 @@ import { CustomerAuthGuard } from './guards/customer-auth.guard';
 import { TenantGuard } from './guards/tenant.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AppThrottlerGuard } from './guards/app-throttler.guard';
+import { InternalSecretGuard } from './guards/internal-secret.guard';
 import { AuditInterceptor } from './interceptors/audit.interceptor';
 import { TurnstileService } from './services/turnstile.service';
+import { OrderSettlementService } from '../modules/orders/order-settlement.service';
 
 /**
  * Infraestructura transversal: JWT global + guards/interceptors reutilizables.
@@ -32,8 +34,10 @@ import { TurnstileService } from './services/turnstile.service';
     TenantGuard,
     RolesGuard,
     AppThrottlerGuard,
+    InternalSecretGuard,
     AuditInterceptor,
     TurnstileService,
+    OrderSettlementService,
   ],
   exports: [
     JwtModule,
@@ -42,8 +46,10 @@ import { TurnstileService } from './services/turnstile.service';
     TenantGuard,
     RolesGuard,
     AppThrottlerGuard,
+    InternalSecretGuard,
     AuditInterceptor,
     TurnstileService,
+    OrderSettlementService,
   ],
 })
 export class CommonModule {}

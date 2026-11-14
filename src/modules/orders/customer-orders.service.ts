@@ -1,18 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class CustomerOrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Lista las órdenes del cliente. Excluye las PENDING (checkout abandonado). */
+  /** Lista las órdenes del cliente (incluyendo órdenes recibidas y en proceso). */
   async list(customerId: string, cursor?: string, limit = 20) {
     const take = Math.min(limit, 50) + 1;
     const items = await this.prisma.order.findMany({
       where: {
         customerId,
-        paymentStatus: { not: PaymentStatus.PENDING },
       },
       take,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),

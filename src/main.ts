@@ -54,8 +54,26 @@ async function bootstrap() {
 
   // El front (Vercel) y subdominios de tenant. En prod restringir por regex.
   const isProd = process.env.NODE_ENV === 'production';
+  // Fuera de prod, por defecto se refleja cualquier origin (dev sin fricción).
+  // Hay que optar explícitamente por NO hacerlo con ALLOW_ANY_ORIGIN=0/false
+  // en entornos no-prod que sí quieran probar la validación real de CORS
+  // (p.ej. staging). Nunca se infiere "permitir cualquier origin" en
+  // producción, sin importar esta variable.
+  const allowAnyOriginEnv = process.env.ALLOW_ANY_ORIGIN;
+  const allowAnyOrigin =
+    !isProd &&
+    (allowAnyOriginEnv === undefined ||
+      allowAnyOriginEnv === '1' ||
+      allowAnyOriginEnv.toLowerCase() === 'true');
   const webAppUrl = process.env.WEB_APP_URL ?? 'http://localhost:3000';
-  const apexHost = new URL(webAppUrl).hostname.split('.').slice(-2).join('.');
+  // Dominio raíz de la plataforma. Se toma de PLATFORM_DOMAIN o, si falta, del
+  // host de WEB_APP_URL sin el prefijo www./app. — nunca "las dos últimas
+  // etiquetas": con `x.vercel.app` o `tienda.com.co` eso abriría CORS con
+  // credenciales a todo vercel.app / com.co.
+  const apexHost = (
+    process.env.PLATFORM_DOMAIN?.trim() ||
+    new URL(webAppUrl).hostname.replace(/^(www|app)\./, '')
+  ).toLowerCase();
   const apexEscaped = apexHost.replace(/\./g, '\\.');
   // Permite el apex y cualquier subdominio (multi-tenant por subdominio).
   const corsRegex = new RegExp(
@@ -76,9 +94,10 @@ async function bootstrap() {
   const corsLogger = new NestLogger('CORS');
 
   app.enableCors({
-    // Fuera de prod: refleja cualquier origin (dev sin fricción).
-    // En prod: apex/subdominios + CSV extra + dominios de cliente en TenantDomain.
-    origin: !isProd
+    // Fuera de prod: refleja cualquier origin si ALLOW_ANY_ORIGIN lo permite
+    // (dev sin fricción). En prod: apex/subdominios + CSV extra + dominios
+    // de cliente en TenantDomain, siempre, sin excepción.
+    origin: allowAnyOrigin
       ? true
       : (
           origin: string | undefined,
@@ -110,11 +129,16 @@ async function bootstrap() {
     exposedHeaders: ['Set-Cookie'],
   });
 
+  // forbidNonWhitelisted global: rechaza con 400 cualquier propiedad extra no
+  // declarada en los DTOs, para detectar pronto desalineaciones de contrato
+  // con el frontend (campos renombrados/eliminados que el cliente siga
+  // enviando). No se pudo diferenciar de forma simple solo para /v1/admin/*
+  // sin un pipe por-ruta, así que se activa globalmente.
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
       transformOptions: { enableImplicitConversion: true },
     }),
   );
@@ -124,24 +148,27 @@ async function bootstrap() {
   // Cierre limpio de conexiones ante SIGTERM/SIGINT en Docker/K8s
   app.enableShutdownHooks();
 
-  // OpenAPI — el front genera su SDK tipado desde /docs-json
-  const config = new DocumentBuilder()
-    .setTitle('BestCoffee API')
-    .setDescription('API multi-tenant de la plataforma SaaS de café')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addGlobalParameters({
-      name: 'X-Tenant-Slug',
-      in: 'header',
-      required: false,
-      description: 'Slug del tenant (lo pega el SDK del front)',
-      schema: { type: 'string' },
-    })
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    jsonDocumentUrl: 'docs-json',
-  });
+  // OpenAPI — el front genera su SDK tipado desde /docs-json.
+  // En producción se oculta por defecto salvo que ENABLE_SWAGGER=1.
+  if (!isProd || process.env.ENABLE_SWAGGER === '1') {
+    const config = new DocumentBuilder()
+      .setTitle('BestCoffee API')
+      .setDescription('API multi-tenant de la plataforma SaaS de café')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addGlobalParameters({
+        name: 'X-Tenant-Slug',
+        in: 'header',
+        required: false,
+        description: 'Slug del tenant (lo pega el SDK del front)',
+        schema: { type: 'string' },
+      })
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document, {
+      jsonDocumentUrl: 'docs-json',
+    });
+  }
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

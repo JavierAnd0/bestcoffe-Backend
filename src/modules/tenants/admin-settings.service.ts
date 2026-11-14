@@ -1,8 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RevalidationService } from '../revalidation/revalidation.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
+import {
+  readNewsletterConfig,
+  resolveWelcomeOffer,
+} from '../newsletter/newsletter-config';
 
 /** Claves de `features` controladas por la plataforma (plan/billing), no por el operador. */
 const PLATFORM_FEATURE_KEYS = [
@@ -60,14 +68,41 @@ export class AdminSettingsService {
       touchesStorefront = true;
     }
 
+    // merge sobre `features` existentes; las claves de plan quedan intactas
+    // porque solo sobreescribimos las operativas que llegan en el DTO.
+    let nextFeatures: Record<string, unknown> | null = null;
+
     if (dto.shipping) {
-      // merge sobre features existentes; las claves de plan quedan intactas
-      // porque solo sobreescribimos las operativas que llegan en el DTO.
-      const features = {
+      nextFeatures = {
         ...(current.features as Record<string, unknown>),
         ...this.compact(dto.shipping),
       };
-      data.features = features as Prisma.InputJsonValue;
+    }
+
+    if (dto.newsletter) {
+      const base =
+        nextFeatures ?? (current.features as Record<string, unknown>);
+      const prev = readNewsletterConfig(base);
+      const next = { ...prev };
+      if (dto.newsletter.popupEnabled !== undefined) {
+        next.popupEnabled = dto.newsletter.popupEnabled;
+      }
+      if (dto.newsletter.welcomeCode !== undefined) {
+        const code = dto.newsletter.welcomeCode?.trim().toUpperCase() || null;
+        // Nunca se guarda (ni se promociona) un cupón que no funcione.
+        if (code && !(await resolveWelcomeOffer(this.prisma, tenantId, code))) {
+          throw new BadRequestException(
+            `El código "${code}" no existe o no está vigente. Créalo primero en Promociones.`,
+          );
+        }
+        next.welcomeCode = code;
+      }
+      nextFeatures = { ...base, newsletter: next };
+      touchesStorefront = true;
+    }
+
+    if (nextFeatures) {
+      data.features = nextFeatures as Prisma.InputJsonValue;
     }
 
     const updated = await this.prisma.tenant.update({

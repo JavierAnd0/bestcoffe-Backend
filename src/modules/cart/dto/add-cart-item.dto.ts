@@ -18,4 +18,3 @@ export class AddCartItemDto {
   @Max(99)
   quantity: number = 1;
 }
-

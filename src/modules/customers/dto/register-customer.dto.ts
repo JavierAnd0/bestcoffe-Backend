@@ -24,4 +24,11 @@ export class RegisterCustomerDto {
   @IsOptional()
   @MaxLength(100)
   name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Token de verificación emitido por Cloudflare Turnstile',
+  })
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
 }
