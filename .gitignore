@@ -47,3 +47,4 @@ prisma/*.db
 # temp
 .cache
 *.tsbuildinfo
+.vercel

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nestjs",
+  "installCommand": "pnpm install --frozen-lockfile --ignore-scripts && pnpm rebuild esbuild prisma @prisma/engines @prisma/client unrs-resolver protobufjs @node-rs/argon2 && pnpm prisma generate"
+}
