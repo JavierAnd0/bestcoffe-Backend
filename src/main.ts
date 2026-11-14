@@ -66,7 +66,14 @@ async function bootstrap() {
       allowAnyOriginEnv === '1' ||
       allowAnyOriginEnv.toLowerCase() === 'true');
   const webAppUrl = process.env.WEB_APP_URL ?? 'http://localhost:3000';
-  const apexHost = new URL(webAppUrl).hostname.split('.').slice(-2).join('.');
+  // Dominio raíz de la plataforma. Se toma de PLATFORM_DOMAIN o, si falta, del
+  // host de WEB_APP_URL sin el prefijo www./app. — nunca "las dos últimas
+  // etiquetas": con `x.vercel.app` o `tienda.com.co` eso abriría CORS con
+  // credenciales a todo vercel.app / com.co.
+  const apexHost = (
+    process.env.PLATFORM_DOMAIN?.trim() ||
+    new URL(webAppUrl).hostname.replace(/^(www|app)\./, '')
+  ).toLowerCase();
   const apexEscaped = apexHost.replace(/\./g, '\\.');
   // Permite el apex y cualquier subdominio (multi-tenant por subdominio).
   const corsRegex = new RegExp(
