@@ -169,13 +169,33 @@ export class AdminOrdersService {
 
   /** Ediciones administrativas (tracking, pago, notas internas). */
   async update(tenantId: string, id: string, dto: UpdateOrderDto) {
-    await this.ensure(tenantId, id);
+    const current = await this.ensure(tenantId, id);
+    // Marcar un pedido como pagado a mano (transferencia / contra entrega) pasa
+    // por la misma liquidación que un pago de pasarela: descuenta inventario,
+    // cuenta el cupón y envía la confirmación. Es idempotente.
+    const manualPaid = dto.paymentStatus === 'PAID';
+    if (manualPaid) {
+      // Un pedido cancelado ya devolvió su stock y uno reembolsado ya lo
+      // descontó: liquidarlos de nuevo duplicaría el movimiento de inventario.
+      if (current.status === 'CANCELLED') {
+        throw new BadRequestException(
+          'No se puede marcar como pagado un pedido cancelado',
+        );
+      }
+      if (current.paymentStatus === 'REFUNDED') {
+        throw new BadRequestException(
+          'No se puede marcar como pagado un pedido reembolsado',
+        );
+      }
+      await this.settlement.settlePaidOrder(id, { provider: 'MANUAL' });
+    }
     return this.prisma.order.update({
       where: { id },
       data: {
-        ...(dto.paymentStatus !== undefined && {
-          paymentStatus: dto.paymentStatus,
-        }),
+        ...(dto.paymentStatus !== undefined &&
+          !manualPaid && {
+            paymentStatus: dto.paymentStatus,
+          }),
         ...(dto.trackingUrl !== undefined && { trackingUrl: dto.trackingUrl }),
         ...(dto.internalNotes !== undefined && {
           internalNotes: dto.internalNotes,
@@ -188,7 +208,7 @@ export class AdminOrdersService {
   private async ensure(tenantId: string, id: string) {
     const order = await this.prisma.order.findFirst({
       where: { id, tenantId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, paymentStatus: true },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
     return order;

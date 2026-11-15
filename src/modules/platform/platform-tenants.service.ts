@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, Tier } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { CreatePlatformTenantDto } from './dto/create-platform-tenant.dto';
 import { UpdatePlatformTenantDto } from './dto/update-platform-tenant.dto';
@@ -23,6 +24,7 @@ export class PlatformTenantsService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly tenantFeatures: TenantFeaturesService,
   ) {}
 
   async list() {
@@ -245,6 +247,9 @@ export class PlatformTenantsService {
         ...commissionData,
       },
     });
+
+    // El plan o sus overrides pudieron cambiar: que se vea ya, no tras la caché.
+    this.tenantFeatures.invalidate(id);
 
     // Notificar al dueño del tenant si hay un cambio de % que debe aprobar.
     if (proposal) {

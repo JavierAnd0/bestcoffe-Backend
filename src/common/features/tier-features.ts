@@ -17,9 +17,14 @@ export type FeatureFlags = {
   // Presencia (todos los tiers)
   blog: boolean;
   catalog: boolean; // navegar productos + ver precios
+  accessories: boolean; // accesorios (molinos, teteras…) además del café
 
   // Transaccional (PRO+)
-  checkout: boolean; // carrito + compra
+  checkout: boolean; // pedidos: carrito + crear la orden
+  // Cobro en línea con pasarela. Con `checkout` encendido y esto apagado la
+  // tienda recibe pedidos y cobra por fuera (transferencia / contra entrega):
+  // el operador los marca como pagados desde el panel.
+  onlinePayments: boolean;
   customerAccounts: boolean; // registro/login de clientes
   subscriptions: boolean; // suscripciones de café
   discountCodes: boolean; // códigos de descuento
@@ -44,7 +49,9 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
   STARTER: {
     blog: true,
     catalog: true,
+    accessories: true,
     checkout: false,
+    onlinePayments: false,
     customerAccounts: false,
     subscriptions: false,
     discountCodes: false,
@@ -56,7 +63,9 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
   PRO: {
     blog: true,
     catalog: true,
+    accessories: true,
     checkout: true,
+    onlinePayments: true,
     customerAccounts: true,
     subscriptions: true,
     discountCodes: true,
@@ -68,7 +77,9 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
   BUSINESS: {
     blog: true,
     catalog: true,
+    accessories: true,
     checkout: true,
+    onlinePayments: true,
     customerAccounts: true,
     subscriptions: true,
     discountCodes: true,

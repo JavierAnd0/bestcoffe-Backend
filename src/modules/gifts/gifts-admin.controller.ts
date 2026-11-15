@@ -20,6 +20,8 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { GiftsService } from './gifts.service';
 import { CreateGiftDto } from './dto/create-gift.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 class ListGiftsDto {
   @ApiPropertyOptional({ default: 25, maximum: 100 })
@@ -38,7 +40,8 @@ class ListGiftsDto {
 @ApiTags('admin/gifts')
 @ApiBearerAuth()
 @Controller('v1/admin/gifts')
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, FeatureGuard)
+@RequireFeature('gifts')
 @Roles('TENANT_ORDERS')
 @UseInterceptors(AuditInterceptor)
 export class GiftsAdminController {

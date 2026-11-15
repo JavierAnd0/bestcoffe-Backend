@@ -36,6 +36,21 @@ async function main() {
         primary: '#3B2A1F',
         accent: '#C8642E',
         font: 'editorial',
+        // Identidad que el storefront muestra (contacto, factura, textos legales).
+        // Datos ficticios de la tienda de demostración.
+        hero: 'scene3d',
+        city: 'Bogotá',
+        contactEmail: 'hola@bestcoffee.io',
+        contactPhone: '+57 300 123 4567',
+        legalName: 'ORÍGEN Café S.A.S.',
+        legalId: '900.123.456-7',
+        pages: {
+          historia: true,
+          impacto: true,
+          sostenibilidad: true,
+          mayoristas: true,
+          tiendas: true,
+        },
       },
     },
   });

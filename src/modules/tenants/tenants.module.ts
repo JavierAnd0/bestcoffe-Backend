@@ -7,6 +7,8 @@ import { MembersController } from './members.controller';
 import { MembersService } from './members.service';
 import { AdminBillingController } from './admin-billing.controller';
 import { AdminBillingService } from './admin-billing.service';
+import { TenantDomainsController } from './tenant-domains.controller';
+import { TenantDomainsService } from './tenant-domains.service';
 
 @Module({
   controllers: [
@@ -14,13 +16,15 @@ import { AdminBillingService } from './admin-billing.service';
     AdminSettingsController,
     MembersController,
     AdminBillingController,
+    TenantDomainsController,
   ],
   providers: [
     TenantsService,
     AdminSettingsService,
     MembersService,
     AdminBillingService,
+    TenantDomainsService,
   ],
-  exports: [TenantsService],
+  exports: [TenantsService, TenantDomainsService],
 })
 export class TenantsModule {}

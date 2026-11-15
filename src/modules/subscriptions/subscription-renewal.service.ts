@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { GrindFormat, OrderSource, SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -12,6 +13,7 @@ export class SubscriptionRenewalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
+    private readonly features: TenantFeaturesService,
   ) {}
 
   /**
@@ -28,6 +30,8 @@ export class SubscriptionRenewalService {
       where: {
         status: SubStatus.ACTIVE,
         nextShipAt: { lte: now },
+        // Una tienda suspendida por cobro no cobra renovaciones a sus clientes.
+        tenant: { billingStatus: { notIn: ['CANCELLED', 'INACTIVE'] } },
       },
       include: {
         customer: { select: { id: true, stripeCustomerId: true } },
@@ -50,6 +54,10 @@ export class SubscriptionRenewalService {
 
     for (const sub of dueSubscriptions) {
       try {
+        // Sin la capacidad `subscriptions` (plan o suspensión) no se renueva:
+        // la suscripción queda esperando, sin cobro ni marca de fallo.
+        const flags = await this.features.get(sub.tenantId);
+        if (!flags.subscriptions) continue;
         await this.renewSubscription(sub);
         processed++;
       } catch (err: unknown) {

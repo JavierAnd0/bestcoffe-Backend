@@ -23,6 +23,9 @@ export const envValidationSchema = Joi.object({
 
   // Auth — secreto fuerte SIEMPRE obligatorio (sin fallback inseguro)
   JWT_SECRET: Joi.string().min(32).required(),
+  // Opcional: clave para cifrar tokens OAuth guardados. Si falta se deriva de
+  // JWT_SECRET (cambiar cualquiera de las dos obliga a reconectar MercadoPago).
+  TOKEN_ENCRYPTION_KEY: Joi.string().min(32).allow('').optional(),
   JWT_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
@@ -36,6 +39,7 @@ export const envValidationSchema = Joi.object({
   // El servicio respectivo falla con 400 si se intenta cobrar sin configurarlo.
   STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
   STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+  STRIPE_CHECKOUT_ENABLED: Joi.string().valid('0', '1', '').optional(),
   STRIPE_PLATFORM_WEBHOOK_SECRET: Joi.string().allow('').optional(),
 
   // MercadoPago (marketplace OAuth) — opcionales; cada tienda conecta su cuenta

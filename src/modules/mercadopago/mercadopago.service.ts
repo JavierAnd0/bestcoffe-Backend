@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { MercadoPagoConfig, OAuth, Payment } from 'mercadopago';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { deriveSecretBoxKey, open, seal } from '../../common/crypto/secret-box';
 import { OrderSettlementService } from '../orders/order-settlement.service';
 import type { MpPaymentInputDto } from '../orders/dto/create-order.dto';
 
@@ -48,6 +49,9 @@ export class MercadoPagoService {
     private readonly jwt: JwtService,
     private readonly settlement: OrderSettlementService,
   ) {}
+
+  /** Clave de cifrado de los tokens OAuth guardados (ver secret-box.ts). */
+  private readonly boxKey = deriveSecretBoxKey();
 
   private client(accessToken: string): MercadoPagoConfig {
     return new MercadoPagoConfig({ accessToken });
@@ -113,8 +117,9 @@ export class MercadoPagoService {
       where: { id: tenantId },
       data: {
         mpUserId: String(creds.user_id),
-        mpAccessToken: creds.access_token,
-        mpRefreshToken: creds.refresh_token,
+        // Los tokens se guardan cifrados: una fuga de la base no los expone.
+        mpAccessToken: seal(creds.access_token, this.boxKey),
+        mpRefreshToken: seal(creds.refresh_token, this.boxKey),
         mpPublicKey: creds.public_key,
         mpTokenExpiresAt: new Date(Date.now() + creds.expires_in * 1000),
         mpConnected: true,
@@ -129,14 +134,14 @@ export class MercadoPagoService {
     }
     const expMs = tenant.mpTokenExpiresAt?.getTime() ?? 0;
     if (expMs - Date.now() > TOKEN_REFRESH_MARGIN_MS) {
-      return tenant.mpAccessToken;
+      return open(tenant.mpAccessToken, this.boxKey);
     }
     const oauth = new OAuth(this.client(''));
     const creds = (await oauth.refresh({
       body: {
         client_id: this.config.get<string>('mercadopago.clientId'),
         client_secret: this.config.get<string>('mercadopago.clientSecret'),
-        refresh_token: tenant.mpRefreshToken,
+        refresh_token: open(tenant.mpRefreshToken, this.boxKey),
       },
     })) as unknown as MpOAuthCredentials;
     await this.persistCreds(tenant.id, creds);
@@ -189,6 +194,8 @@ export class MercadoPagoService {
             mpAccessToken: true,
             mpRefreshToken: true,
             mpTokenExpiresAt: true,
+            billingType: true,
+            commissionPct: true,
           },
         },
         customer: { select: { email: true } },
@@ -198,8 +205,14 @@ export class MercadoPagoService {
 
     const accessToken = await this.getFreshAccessToken(order.tenant);
     const amount = Math.round(order.totalCents / 100);
+    // Comisión de la plataforma sobre esta venta. Una tienda en modalidad
+    // COMISIÓN paga el % que ELLA aceptó (commissionPct), no uno global; las
+    // demás (suscripción / pago único) usan el % de marketplace general, si hay.
     const feePct =
-      this.config.get<number>('mercadopago.marketplaceFeePct') ?? 0;
+      order.tenant.billingType === 'COMMISSION' &&
+      order.tenant.commissionPct != null
+        ? order.tenant.commissionPct
+        : (this.config.get<number>('mercadopago.marketplaceFeePct') ?? 0);
     const applicationFee =
       feePct > 0 ? Math.round((amount * feePct) / 100) : undefined;
 

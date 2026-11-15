@@ -6,10 +6,13 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { ProductsService } from './products.service';
 import { ListProductsDto } from './dto/list-products.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('products')
 @Controller('v1/products')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, FeatureGuard)
+@RequireFeature('catalog')
 @Public()
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}

@@ -121,3 +121,20 @@ export class CreateOrderDto {
   @Type(() => MpPaymentInputDto)
   payment?: MpPaymentInputDto;
 }
+
+/**
+ * Pedido de invitado (sin sesión). El correo identifica a quién pertenece el
+ * pedido, pero NO se considera verificado: este flujo nunca entrega una sesión.
+ */
+export class CreateGuestOrderDto extends CreateOrderDto {
+  @ApiProperty({ example: 'cliente@correo.com' })
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
+
+  @ApiPropertyOptional({ example: 'María García' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+}

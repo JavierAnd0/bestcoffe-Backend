@@ -25,9 +25,12 @@ import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { MergeCartDto } from './dto/merge-cart.dto';
 import { CustomerCartResponseDto } from './dto/customer-cart-response.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('cart')
 @Controller('v1/cart')
+@RequireFeature('checkout')
 export class CartController {
   constructor(private readonly cart: CartService) {}
 
@@ -36,7 +39,7 @@ export class CartController {
    */
   @Post('price')
   @Public()
-  @UseGuards(TenantGuard)
+  @UseGuards(TenantGuard, FeatureGuard)
   @HttpCode(200)
   @ApiOkResponse({ type: CartPriceResponseDto })
   price(
@@ -50,7 +53,7 @@ export class CartController {
    * Obtiene el carrito persistente guardado en la cuenta del cliente.
    */
   @Get()
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ type: CustomerCartResponseDto })
   getCart(
@@ -64,7 +67,7 @@ export class CartController {
    * Agrega o incrementa un producto en el carrito persistente del cliente.
    */
   @Post('items')
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ type: CustomerCartResponseDto })
   addItem(
@@ -78,7 +81,7 @@ export class CartController {
    * Modifica la cantidad de una variante en el carrito del cliente (0 para eliminar).
    */
   @Patch('items/:variantId')
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ type: CustomerCartResponseDto })
   updateItem(
@@ -93,7 +96,7 @@ export class CartController {
    * Elimina un producto específico del carrito del cliente.
    */
   @Delete('items/:variantId')
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   @ApiOkResponse({ type: CustomerCartResponseDto })
   removeItem(
@@ -107,7 +110,7 @@ export class CartController {
    * Vacía el carrito del cliente (ej. al completar la compra).
    */
   @Delete()
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   clearCart(
     @CurrentCustomer() customer: CurrentCustomerData,
@@ -120,7 +123,7 @@ export class CartController {
    * con su carrito en la base de datos tras iniciar sesión.
    */
   @Post('merge')
-  @UseGuards(CustomerAuthGuard)
+  @UseGuards(CustomerAuthGuard, FeatureGuard)
   @ApiBearerAuth()
   @HttpCode(200)
   @ApiOkResponse({ type: CustomerCartResponseDto })

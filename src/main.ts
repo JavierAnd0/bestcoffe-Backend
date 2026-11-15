@@ -22,7 +22,9 @@ function makeTenantDomainResolver(prisma: PrismaService) {
   return async function isAllowedTenantDomain(host: string): Promise<boolean> {
     const now = Date.now();
     if (now > exp) {
+      // Solo dominios VERIFICADOS: registrar un dominio ajeno no abre CORS.
       const rows = await prisma.tenantDomain.findMany({
+        where: { verified: true },
         select: { domain: true },
       });
       cache = new Set(rows.map((r) => r.domain.toLowerCase()));
@@ -33,6 +35,15 @@ function makeTenantDomainResolver(prisma: PrismaService) {
 }
 
 async function bootstrap() {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !process.env.TOKEN_ENCRYPTION_KEY
+  ) {
+    new NestLogger('Seguridad').warn(
+      'TOKEN_ENCRYPTION_KEY no está definida: los tokens de MercadoPago se cifran con una clave derivada de JWT_SECRET, y rotar JWT_SECRET los dejaría ilegibles. Define una clave propia (32+ caracteres).',
+    );
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
     rawBody: true,
