@@ -10,6 +10,8 @@ export const CTX = {
   USER_ID: 'userId',
   ROLE: 'role',
   REQUEST_ID: 'requestId',
+  /** Cabecera `X-Demo-Features` cruda (solo la honra una tienda sandbox). */
+  DEMO_FEATURES: 'demoFeatures',
 } as const;
 
 export interface RequestContextStore {
@@ -18,4 +20,5 @@ export interface RequestContextStore {
   [CTX.USER_ID]?: string;
   [CTX.ROLE]?: OperatorRole;
   [CTX.REQUEST_ID]?: string;
+  [CTX.DEMO_FEATURES]?: string;
 }

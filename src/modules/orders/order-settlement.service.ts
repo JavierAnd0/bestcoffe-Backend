@@ -15,7 +15,10 @@ export type PaymentSettlementEvent =
       eventId: string;
       eventType: string;
       mpPaymentId: string;
-    };
+    }
+  // Pago confirmado a mano por el operador (transferencia / contra entrega).
+  // No hay evento de pasarela: la idempotencia la da el estado PAID del pedido.
+  | { provider: 'MANUAL' };
 
 /**
  * Módulo profundo (Deep Module) responsable de la liquidación transaccional de
@@ -45,7 +48,9 @@ export class OrderSettlementService {
     const settled = await this.prisma.$transaction(async (tx) => {
       // Guarda #1 de idempotencia: registro único del evento de pasarela.
       try {
-        if (settlement.provider === 'STRIPE') {
+        if (settlement.provider === 'MANUAL') {
+          // sin evento que registrar; cubre la guarda #2
+        } else if (settlement.provider === 'STRIPE') {
           await tx.stripeEvent.create({
             data: { id: settlement.eventId, type: settlement.eventType },
           });
@@ -74,9 +79,12 @@ export class OrderSettlementService {
         where: { id: orderId },
         data: {
           paymentStatus: 'PAID',
-          ...(settlement.provider === 'STRIPE'
-            ? { stripePaymentIntentId: settlement.stripePaymentIntentId }
-            : { mpPaymentId: settlement.mpPaymentId }),
+          ...(settlement.provider === 'STRIPE' && {
+            stripePaymentIntentId: settlement.stripePaymentIntentId,
+          }),
+          ...(settlement.provider === 'MERCADOPAGO' && {
+            mpPaymentId: settlement.mpPaymentId,
+          }),
         },
       });
 

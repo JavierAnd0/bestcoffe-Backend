@@ -20,11 +20,14 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { AdminReviewsService } from './admin-reviews.service';
 import { ApproveReviewDto, ReplyReviewDto } from './dto/moderate-review.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('admin/reviews')
 @ApiBearerAuth()
 @Controller('v1/admin/reviews')
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, FeatureGuard)
+@RequireFeature('reviews')
 @Roles('TENANT_EDITOR')
 @UseInterceptors(AuditInterceptor)
 export class AdminReviewsController {

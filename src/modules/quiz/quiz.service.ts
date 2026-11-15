@@ -32,10 +32,11 @@ export class QuizService {
         tenantId,
         status: ProductStatus.ACTIVE,
         subscriptionAvailability: { not: SubAvail.SUBSCRIPTION_ONLY },
-        // si pide decaf, solo DECAF; si no, lo excluimos
+        // si pide decaf, solo DECAF; si no, lo excluimos. Los accesorios nunca
+        // son una recomendación de café.
         ...(wantsDecaf
           ? { type: ProductType.DECAF }
-          : { type: { not: ProductType.DECAF } }),
+          : { type: { notIn: [ProductType.DECAF, ProductType.ACCESSORY] } }),
       },
       select: {
         id: true,

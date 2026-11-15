@@ -20,6 +20,7 @@ export interface AppConfig {
     secretKey: string;
     webhookSecret: string;
     platformWebhookSecret: string;
+    checkoutEnabled: boolean;
   };
   mercadopago: {
     clientId: string;
@@ -71,6 +72,10 @@ export default (): AppConfig => ({
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
     platformWebhookSecret: process.env.STRIPE_PLATFORM_WEBHOOK_SECRET ?? '',
+    // Stripe cobra en UNA cuenta (la de la plataforma): sin Connect, el dinero
+    // de una tienda caería ahí. Por eso el checkout con Stripe está apagado
+    // salvo que se active a propósito (solo para pruebas de la plataforma).
+    checkoutEnabled: process.env.STRIPE_CHECKOUT_ENABLED === '1',
   },
   mercadopago: {
     // Credenciales de TU aplicación MercadoPago (marketplace). Las tiendas

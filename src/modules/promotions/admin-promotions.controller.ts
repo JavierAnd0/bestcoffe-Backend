@@ -22,11 +22,14 @@ import { AdminPromotionsService } from './admin-promotions.service';
 import { CreateDiscountCodeDto } from './dto/create-discount-code.dto';
 import { UpdateDiscountCodeDto } from './dto/update-discount-code.dto';
 import { ListDiscountCodesDto } from './dto/list-discount-codes.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('admin/promotions')
 @ApiBearerAuth()
 @Controller('v1/admin/discount-codes')
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, FeatureGuard)
+@RequireFeature('discountCodes')
 @Roles('TENANT_EDITOR')
 @UseInterceptors(AuditInterceptor)
 export class AdminPromotionsController {

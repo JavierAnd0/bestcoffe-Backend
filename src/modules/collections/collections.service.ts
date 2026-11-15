@@ -4,8 +4,10 @@ import {
   Prisma,
   ProductStatus,
   SubAvail,
+  ProductType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 
 /** Forma de las reglas AUTO almacenadas en Collection.rules (JSON). */
 interface AutoRules {
@@ -42,7 +44,10 @@ const PRODUCT_CARD_SELECT = {
 
 @Injectable()
 export class CollectionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly features: TenantFeaturesService,
+  ) {}
 
   /** Listado de colecciones del tenant (para nav/home), con conteo. */
   async list(tenantId: string) {
@@ -78,20 +83,28 @@ export class CollectionsService {
       throw new NotFoundException(`Colección "${slug}" no encontrada`);
     }
 
+    const { accessories } = await this.features.get(tenantId);
     const products =
       collection.type === CollectionType.AUTO
-        ? await this.resolveAuto(tenantId, collection.rules as AutoRules | null)
-        : await this.resolveManual(collection.id);
+        ? await this.resolveAuto(
+            tenantId,
+            collection.rules as AutoRules | null,
+            accessories,
+          )
+        : await this.resolveManual(collection.id, accessories);
 
     return { ...collection, rules: undefined, products };
   }
 
   /** Productos vinculados manualmente, respetando el orden definido. */
-  private async resolveManual(collectionId: string) {
+  private async resolveManual(collectionId: string, accessories: boolean) {
     const rows = await this.prisma.collectionProduct.findMany({
       where: {
         collectionId,
-        product: { status: ProductStatus.ACTIVE },
+        product: {
+          status: ProductStatus.ACTIVE,
+          ...(!accessories && { type: { not: ProductType.ACCESSORY } }),
+        },
       },
       orderBy: { position: 'asc' },
       select: { product: { select: PRODUCT_CARD_SELECT } },
@@ -100,10 +113,15 @@ export class CollectionsService {
   }
 
   /** Traduce las reglas AUTO a un where de Prisma. */
-  private async resolveAuto(tenantId: string, rules: AutoRules | null) {
+  private async resolveAuto(
+    tenantId: string,
+    rules: AutoRules | null,
+    accessories: boolean,
+  ) {
     const where: Prisma.ProductWhereInput = {
       tenantId,
       status: ProductStatus.ACTIVE,
+      ...(!accessories && { AND: [{ type: { not: ProductType.ACCESSORY } }] }),
       subscriptionAvailability: { not: SubAvail.SUBSCRIPTION_ONLY },
       ...(rules?.type && { type: rules.type }),
       ...(rules?.flavorNote && { flavorNotes: { has: rules.flavorNote } }),

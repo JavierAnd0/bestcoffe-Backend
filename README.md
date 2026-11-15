@@ -10,7 +10,9 @@ tienda pública, panel admin, motor de suscripciones). Consumido por el front
 - **Prisma 7** + PostgreSQL (Neon en prod, Postgres.app en local) — driver adapter `pg`
 - **@nestjs/swagger** → OpenAPI en `/docs` y `/docs-json`
 - **passport-jwt / @nestjs/jwt** — sesión de operador y cliente (JWT compartido con el front)
-- **Stripe** (Connect Express), **Resend** (emails), **Inngest** (jobs), **Vercel Blob** (uploads)
+- **MercadoPago** (OAuth marketplace: cada tienda cobra en su propia cuenta) y **Stripe**
+  (PaymentIntents en una sola cuenta de plataforma; **sin Connect todavía**, por eso no
+  debe ofrecerse a tiendas reales), **Resend** (emails), **Inngest** (jobs), **Vercel Blob** (uploads)
 - **nestjs-cls** (AsyncLocalStorage) para el contexto multi-tenant
 - **nestjs-pino** logging estructurado
 
@@ -106,6 +108,20 @@ mutaciones se auditan (`AuditInterceptor`) y revalidan el front:
 | POST/PATCH/DELETE | `/v1/admin/products/:id/images` · `/reorder` · `/images/:id` | Imágenes |
 | GET | `/v1/admin/reviews?status=` | Cola de moderación |
 | POST | `/v1/admin/reviews/:id/approve` · `/reject` · `/reply` | Moderar |
+
+## Despliegue
+
+- **Ahora (demo):** Vercel, proyecto `bestcoffee-api`, conectado a este repo. Cada push
+  a `main` despliega a producción: https://bestcoffee-api.vercel.app (`/health`).
+  `vercel.json` declara el framework y el comando de instalación (pnpm 11 exige
+  `--ignore-scripts` + `pnpm rebuild`, igual que el Dockerfile y el CI).
+- **Con el primer cliente de pago:** Dokploy, con el `Dockerfile` de este repo. En
+  Vercel el límite de peticiones y las cachés en memoria son por instancia; en un
+  solo contenedor vuelven a ser globales.
+- Las migraciones (`prisma migrate deploy`) corren al arrancar el contenedor. En
+  Vercel **no** corren solas: se ejecutan a mano contra la base antes de desplegar.
+
+El estado del plan hacia producción vive en [`docs/PLAN-CIERRE.md`](docs/PLAN-CIERRE.md).
 
 ## Estado
 

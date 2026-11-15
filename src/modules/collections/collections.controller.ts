@@ -5,10 +5,13 @@ import { Public } from '../../common/decorators/public.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { CollectionsService } from './collections.service';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('collections')
 @Controller('v1/collections')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, FeatureGuard)
+@RequireFeature('catalog')
 @Public()
 export class CollectionsController {
   constructor(private readonly collections: CollectionsService) {}

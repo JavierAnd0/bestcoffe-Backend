@@ -55,8 +55,17 @@ import { MailModule } from './modules/mail/mail.module';
         mount: true,
         generateId: true,
         idGenerator: () => randomUUID(),
-        setup: (cls, req: { id?: string }) => {
+        setup: (
+          cls,
+          req: { id?: string; headers?: Record<string, unknown> },
+        ) => {
           cls.set(CTX.REQUEST_ID, req.id ?? randomUUID());
+          // Estado de features del demo por visitante. Solo se guarda crudo (y
+          // acotado): únicamente una tienda marcada como sandbox lo interpreta.
+          const demo = req.headers?.['x-demo-features'];
+          if (typeof demo === 'string' && demo.length <= 600) {
+            cls.set(CTX.DEMO_FEATURES, demo);
+          }
         },
       },
     }),

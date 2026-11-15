@@ -4,6 +4,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthGuard } from './guards/auth.guard';
 import { CustomerAuthGuard } from './guards/customer-auth.guard';
 import { TenantGuard } from './guards/tenant.guard';
+import { FeatureGuard } from './guards/feature.guard';
+import { TenantFeaturesService } from './features/tenant-features.service';
 import { RolesGuard } from './guards/roles.guard';
 import { AppThrottlerGuard } from './guards/app-throttler.guard';
 import { InternalSecretGuard } from './guards/internal-secret.guard';
@@ -32,6 +34,8 @@ import { OrderSettlementService } from '../modules/orders/order-settlement.servi
     AuthGuard,
     CustomerAuthGuard,
     TenantGuard,
+    FeatureGuard,
+    TenantFeaturesService,
     RolesGuard,
     AppThrottlerGuard,
     InternalSecretGuard,
@@ -44,6 +48,8 @@ import { OrderSettlementService } from '../modules/orders/order-settlement.servi
     AuthGuard,
     CustomerAuthGuard,
     TenantGuard,
+    FeatureGuard,
+    TenantFeaturesService,
     RolesGuard,
     AppThrottlerGuard,
     InternalSecretGuard,

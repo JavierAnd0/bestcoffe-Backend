@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   Logger,
@@ -8,10 +9,15 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
-import type { CreateOrderDto } from './dto/create-order.dto';
+import type {
+  CreateGuestOrderDto,
+  CreateOrderDto,
+} from './dto/create-order.dto';
+import { PurchaseMode } from '../cart/dto/price-cart.dto';
 
 @Injectable()
 export class CheckoutService {
@@ -23,9 +29,60 @@ export class CheckoutService {
     private readonly stripe: StripeService,
     private readonly mercadopago: MercadoPagoService,
     private readonly config: ConfigService,
+    private readonly features: TenantFeaturesService,
   ) {}
 
-  async create(tenantId: string, customerId: string, dto: CreateOrderDto) {
+  /**
+   * Pedido de invitado: compra sin sesión, identificada solo por un correo que
+   * nadie ha verificado. Por eso este camino:
+   *  - NO devuelve token ni sesión (antes el front pedía una sesión completa
+   *    para el correo escrito en el checkout: cualquiera podía entrar a la
+   *    cuenta de otro cliente);
+   *  - no modifica un cliente existente (ni nombre, ni emailVerified);
+   *  - no toca su carrito guardado;
+   *  - solo admite compra única: una suscripción exige cuenta propia.
+   */
+  async createGuest(tenantId: string, dto: CreateGuestOrderDto) {
+    if (dto.mode === PurchaseMode.SUBSCRIPTION) {
+      throw new BadRequestException(
+        'Para suscribirte necesitas iniciar sesión o crear una cuenta',
+      );
+    }
+
+    const email = dto.email.toLowerCase().trim();
+
+    // Si el correo ya pertenece a una CUENTA real (con contraseña o verificado
+    // por Google), el pedido de invitado no se puede colgar de ella: nadie ha
+    // probado que el correo sea de quien compra, y quedaría en su historial y
+    // gastaría sus cupones de un solo uso. Debe iniciar sesión.
+    const existing = await this.prisma.customer.findUnique({
+      where: { tenantId_email: { tenantId, email } },
+      select: { passwordHash: true, emailVerified: true },
+    });
+    if (existing && (existing.passwordHash || existing.emailVerified)) {
+      throw new ConflictException(
+        'Ya existe una cuenta con este correo. Inicia sesión para continuar con tu compra.',
+      );
+    }
+
+    // upsert con update vacío: dos pedidos de invitado simultáneos con el mismo
+    // correo nuevo no chocan con @@unique([tenantId, email]).
+    const customer = await this.prisma.customer.upsert({
+      where: { tenantId_email: { tenantId, email } },
+      update: {},
+      create: { tenantId, email, name: dto.name?.trim() || null },
+      select: { id: true },
+    });
+
+    return this.create(tenantId, customer.id, dto, { guest: true });
+  }
+
+  async create(
+    tenantId: string,
+    customerId: string,
+    dto: CreateOrderDto,
+    opts: { guest?: boolean } = {},
+  ) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
       select: { paymentProvider: true, mpConnected: true },
@@ -52,14 +109,17 @@ export class CheckoutService {
 
     // 2. Crear la orden en estado PENDING dentro de una transacción.
     const order = await this.prisma.$transaction(async (tx) => {
-      // Limpiar del carrito persistente los items que se están comprando
-      await tx.cartItem.deleteMany({
-        where: {
-          tenantId,
-          customerId,
-          variantId: { in: priced.lines.map((l) => l.variantId) },
-        },
-      });
+      // Limpiar del carrito persistente los items que se están comprando.
+      // En un pedido de invitado no: ese carrito es del dueño de la cuenta.
+      if (!opts.guest) {
+        await tx.cartItem.deleteMany({
+          where: {
+            tenantId,
+            customerId,
+            variantId: { in: priced.lines.map((l) => l.variantId) },
+          },
+        });
+      }
 
       return tx.order.create({
         data: {
@@ -101,7 +161,32 @@ export class CheckoutService {
       discount: priced.discount,
     };
 
-    // 3. Cobro según el proveedor configurado en la tienda.
+    // 3a. Tienda sin pagos en línea: el pedido queda recibido y pendiente de
+    // pago. Se cobra por fuera (transferencia / contra entrega) y el operador
+    // lo marca como pagado en el panel, lo que descuenta el inventario.
+    // También es manual si la tienda no usa MercadoPago y Stripe no está
+    // habilitado: Stripe cobra en la cuenta de la plataforma, no en la suya.
+    const { onlinePayments } = await this.features.get(tenantId);
+    const stripeAllowed =
+      this.config.get<boolean>('stripe.checkoutEnabled') === true;
+    // MercadoPago elegido pero sin cuenta conectada tampoco puede cobrar: el
+    // pedido queda manual (igual que el front, que apaga el cobro en línea),
+    // en vez de marcarse FAILED y bloquear a la tienda recién creada.
+    const noGateway =
+      tenant.paymentProvider === 'MERCADOPAGO'
+        ? !tenant.mpConnected
+        : !stripeAllowed;
+    if (!onlinePayments || noGateway) {
+      return {
+        orderId: order.id,
+        provider: 'MANUAL' as const,
+        paymentStatus: 'PENDING' as const,
+        totalCents: order.totalCents,
+        summary,
+      };
+    }
+
+    // 3b. Cobro según el proveedor configurado en la tienda.
     if (tenant.paymentProvider === 'MERCADOPAGO') {
       if (!tenant.mpConnected) {
         await this.markOrderFailed(

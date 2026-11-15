@@ -6,10 +6,13 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { BlogService } from './blog.service';
 import { ListBlogDto } from './dto/list-blog.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('blog')
 @Controller('v1/blog')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, FeatureGuard)
+@RequireFeature('blog')
 @Public()
 export class BlogController {
   constructor(private readonly blog: BlogService) {}

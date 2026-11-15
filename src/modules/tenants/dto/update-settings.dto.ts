@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsHexColor,
+  Matches,
   IsInt,
   IsOptional,
   IsString,
@@ -33,6 +34,9 @@ export class BrandingDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @Matches(/^(https:\/\/|\/(?!\/))\S+$/, {
+    message: 'El logo debe ser una URL https o una ruta que empiece por /',
+  })
   logoUrl?: string;
 }
 

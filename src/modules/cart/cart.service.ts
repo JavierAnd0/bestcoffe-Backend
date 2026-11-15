@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DiscountType, SubAvail } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { PriceCartDto, PurchaseMode } from './dto/price-cart.dto';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
@@ -18,7 +19,10 @@ const DEFAULT_SHIPPING_FLAT = 12_000 * 100;
 
 @Injectable()
 export class CartService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly features: TenantFeaturesService,
+  ) {}
 
   /**
    * Calcula el carrito del lado servidor (precio autoritativo). Valida que las
@@ -33,8 +37,18 @@ export class CartService {
     const mode = dto.mode ?? PurchaseMode.ONE_TIME;
     const ids = [...new Set(dto.items.map((i) => i.variantId))];
 
+    const { accessories, discountCodes } = await this.features.get(tenantId);
     const variants = await this.prisma.productVariant.findMany({
-      where: { tenantId, id: { in: ids }, product: { status: 'ACTIVE' } },
+      where: {
+        tenantId,
+        id: { in: ids },
+        product: {
+          status: 'ACTIVE',
+          // Sin la capacidad de accesorios, sus variantes no se pueden cotizar
+          // ni comprar aunque llegue su id (carrito guardado, enlace viejo).
+          ...(!accessories && { type: { not: 'ACCESSORY' } }),
+        },
+      },
       select: {
         id: true,
         sizeGrams: true,
@@ -92,14 +106,23 @@ export class CartService {
       });
     }
 
-    const discount = dto.discountCode
-      ? await this.validateDiscount(
-          tenantId,
-          dto.discountCode,
-          subtotalCents,
-          customerId,
-        )
-      : undefined;
+    // Los cupones son una capacidad de plan: con ella apagada ningún código
+    // aplica, aunque exista en la base (p. ej. tras bajar de plan).
+    const discount = !dto.discountCode
+      ? undefined
+      : discountCodes
+        ? await this.validateDiscount(
+            tenantId,
+            dto.discountCode,
+            subtotalCents,
+            customerId,
+          )
+        : {
+            code: dto.discountCode.trim().toUpperCase(),
+            valid: false,
+            amountCents: 0,
+            reason: 'Esta tienda no tiene códigos de descuento activos',
+          };
     const discountCents = discount?.valid ? discount.amountCents : 0;
 
     const shippingCents = await this.shippingFor(tenantId, subtotalCents);

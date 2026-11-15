@@ -2,6 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import { GrindFormat } from '@prisma/client';
 import { CartService } from './cart.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
+import { TIER_FEATURES } from '../../common/features/tier-features';
 
 describe('CartService - Persistent Database Cart', () => {
   let service: CartService;
@@ -67,7 +69,12 @@ describe('CartService - Persistent Database Cart', () => {
       },
     };
 
-    service = new CartService(prisma as unknown as PrismaService);
+    service = new CartService(
+      prisma as unknown as PrismaService,
+      {
+        get: jest.fn().mockResolvedValue(TIER_FEATURES.PRO),
+      } as unknown as TenantFeaturesService,
+    );
   });
 
   describe('getCart', () => {

@@ -6,10 +6,13 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import type { CurrentTenantData } from '../../common/decorators/current-tenant.decorator';
 import { QuizService } from './quiz.service';
 import { QuizAnswersDto } from './dto/quiz-answers.dto';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 
 @ApiTags('quiz')
 @Controller('v1/quiz')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, FeatureGuard)
+@RequireFeature('catalog')
 @Public()
 export class QuizController {
   constructor(private readonly quiz: QuizService) {}

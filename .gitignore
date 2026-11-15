@@ -48,3 +48,14 @@ prisma/*.db
 .cache
 *.tsbuildinfo
 .vercel
+
+# Herramientas de agentes de IA y su caché: no pertenecen al repositorio
+/.agents
+/.claude
+/skills-lock.json
+
+# Caché local de pnpm
+/.pnpm-store
+
+# Notas internas de despliegue y seguridad (el repo es público)
+/docs/PLAN-CIERRE.md

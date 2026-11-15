@@ -1,11 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { resolveFeatures } from '../../common/features/tier-features';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { resolvePublicNewsletterConfig } from '../newsletter/newsletter-config';
 
 @Injectable()
 export class TenantsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantFeatures: TenantFeaturesService,
+  ) {}
 
   /** Datos públicos del tenant para que el front pinte branding/feature flags. */
   async getPublicProfile(tenantId: string) {
@@ -36,9 +39,17 @@ export class TenantsService {
       tenantId,
       overrides,
     );
+    // Capacidades efectivas: tier + overrides, y todas apagadas si la tienda
+    // está suspendida por cobro. `suspended` le dice al storefront que muestre
+    // "tienda no disponible" en vez del sitio.
+    const { flags, suspended, sandbox } =
+      await this.tenantFeatures.resolve(tenantId);
     return {
       ...rest,
-      features: resolveFeatures(tenant.tier, overrides),
+      features: flags,
+      suspended,
+      // El storefront muestra el panel de interruptores solo en una tienda sandbox.
+      demo: sandbox,
       newsletter,
     };
   }

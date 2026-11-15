@@ -1,22 +1,35 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductStatus, ProductType, SubAvail } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { ListProductsDto } from './dto/list-products.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly features: TenantFeaturesService,
+  ) {}
 
   /** Catálogo público: solo ACTIVE, scope por tenant, paginación keyset. */
   async list(tenantId: string, query: ListProductsDto) {
     const limit = query.limit ?? 24;
+    const { accessories } = await this.features.get(tenantId);
 
     const where: Prisma.ProductWhereInput = {
       tenantId,
       status: ProductStatus.ACTIVE,
       // SUBSCRIPTION_ONLY no aparece en el catálogo regular
       subscriptionAvailability: { not: SubAvail.SUBSCRIPTION_ONLY },
-      ...(query.type && { type: query.type }),
+      // Tienda sin accesorios: se excluyen aunque se pidan por tipo.
+      ...(accessories
+        ? query.type && { type: query.type }
+        : {
+            type:
+              query.type && query.type !== ProductType.ACCESSORY
+                ? query.type
+                : { not: ProductType.ACCESSORY },
+          }),
       ...(query.roastMin && { roastLevel: { gte: query.roastMin } }),
       ...(query.flavorNote && { flavorNotes: { has: query.flavorNote } }),
       ...(query.collection && {
@@ -56,8 +69,14 @@ export class ProductsService {
 
   /** Detalle público por slug con reseñas aprobadas. */
   async findBySlug(tenantId: string, slug: string) {
+    const { accessories } = await this.features.get(tenantId);
     const product = await this.prisma.product.findFirst({
-      where: { tenantId, slug, status: ProductStatus.ACTIVE },
+      where: {
+        tenantId,
+        slug,
+        status: ProductStatus.ACTIVE,
+        ...(!accessories && { type: { not: ProductType.ACCESSORY } }),
+      },
       include: {
         images: { orderBy: { position: 'asc' } },
         variants: { orderBy: { sizeGrams: 'asc' } },
@@ -81,7 +100,7 @@ export class ProductsService {
       throw new NotFoundException(`Producto "${slug}" no encontrado`);
     }
 
-    const related = await this.related(tenantId, product);
+    const related = await this.related(tenantId, product, accessories);
     return { ...product, related };
   }
 
@@ -89,11 +108,13 @@ export class ProductsService {
   private async related(
     tenantId: string,
     product: { id: string; type: ProductType; flavorNotes: string[] },
+    accessories: boolean,
   ) {
     return this.prisma.product.findMany({
       where: {
         tenantId,
         status: ProductStatus.ACTIVE,
+        ...(!accessories && { type: { not: ProductType.ACCESSORY } }),
         subscriptionAvailability: { not: SubAvail.SUBSCRIPTION_ONLY },
         id: { not: product.id },
         OR: [
