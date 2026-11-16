@@ -4,11 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { MfaService } from './mfa.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
 const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min (validez del enlace)
 const SESSION_TTL = '7d'; // duración de la sesión de operador tras el login
+const MFA_PENDING_TTL = '5m'; // tiempo para escribir el código de 2FA tras el enlace
 const GENERIC_RESPONSE = {
   message:
     'Si el correo corresponde a un operador, te enviamos un enlace de acceso.',
@@ -21,6 +23,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly mfa: MfaService,
   ) {}
 
   /**
@@ -80,6 +83,54 @@ export class AuthService {
       data: { loginToken: null, loginTokenExpiresAt: null },
     });
 
+    // Con 2FA activo el enlace no basta: se entrega un token de paso pendiente
+    // (5 min, no abre ninguna ruta) que se canjea junto con el código.
+    if (user.totpEnabledAt) {
+      const mfaToken = await this.jwt.signAsync(
+        { sub: user.id, email: user.email, type: 'mfa_pending' },
+        { expiresIn: MFA_PENDING_TTL },
+      );
+      return { mfaRequired: true as const, mfaToken };
+    }
+
+    return this.issueSession(user);
+  }
+
+  /** Paso 3 (solo con 2FA): código de la app o de respaldo → sesión. */
+  async verifyMfa(mfaToken: string, code: string) {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwt.verifyAsync<JwtPayload>(mfaToken, {
+        secret: this.config.get<string>('jwt.secret'),
+      });
+    } catch {
+      throw new UnauthorizedException(
+        'Tu acceso expiró. Vuelve a pedir el enlace de acceso.',
+      );
+    }
+    if (payload.type !== 'mfa_pending') {
+      throw new UnauthorizedException('Token de verificación inválido.');
+    }
+    if (!(await this.mfa.verifyCode(payload.sub, code))) {
+      throw new UnauthorizedException(
+        'El código no es válido. Revisa la hora del teléfono e inténtalo de nuevo.',
+      );
+    }
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: payload.sub },
+      include: {
+        memberships: { include: { tenant: { select: { slug: true } } } },
+      },
+    });
+    return this.issueSession(user);
+  }
+
+  private async issueSession(user: {
+    id: string;
+    email: string;
+    name: string | null;
+    memberships: { role: string; tenant: { slug: string } }[];
+  }) {
     const accessToken = await this.signToken({
       sub: user.id,
       email: user.email,

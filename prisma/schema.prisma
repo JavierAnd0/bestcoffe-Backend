@@ -233,6 +233,15 @@ model User {
   loginToken          String?
   loginTokenExpiresAt DateTime?
 
+  // Verificación en dos pasos (TOTP, app autenticadora). Los secretos van
+  // sellados con secret-box (AES-256-GCM); el pendiente vale hasta confirmarlo
+  // con un primer código. Los códigos de respaldo se guardan solo como sha-256.
+  totpSecret        String?
+  totpPendingSecret String?
+  totpEnabledAt     DateTime?
+  totpLastStep      Int? // último paso de 30 s aceptado: un código no sirve dos veces
+  totpRecoveryCodes String[]  @default([])
+
   memberships TenantMembership[]
 }
 

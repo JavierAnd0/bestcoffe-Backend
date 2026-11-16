@@ -18,6 +18,8 @@ import { TurnstileService } from '../../common/services/turnstile.service';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { VerifyLoginDto } from './dto/verify-login.dto';
+import { MfaCodeDto, VerifyMfaDto } from './dto/mfa.dto';
+import { MfaService } from './mfa.service';
 
 @ApiTags('auth')
 @Controller('v1/auth')
@@ -25,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly turnstile: TurnstileService,
+    private readonly mfa: MfaService,
   ) {}
 
   /** Paso 1: solicita el enlace de acceso (magic link) por correo. */
@@ -51,5 +54,62 @@ export class AuthController {
   @ApiBearerAuth()
   me(@CurrentUser() user: CurrentUserData) {
     return this.auth.getMe(user);
+  }
+
+  /** Paso 3, solo con 2FA activo: código de la app (o de respaldo) → sesión. */
+  @Post('mfa/verify')
+  @Public()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  verifyMfa(@Body() dto: VerifyMfaDto) {
+    return this.auth.verifyMfa(dto.mfaToken, dto.code);
+  }
+
+  // ── Gestión del 2FA del propio operador (con sesión) ──────────────────────
+
+  @Get('mfa')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  mfaStatus(@CurrentUser() user: CurrentUserData) {
+    return this.mfa.status(user.id);
+  }
+
+  @Post('mfa/setup')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaSetup(@CurrentUser() user: CurrentUserData) {
+    return this.mfa.startSetup(user.id, user.email);
+  }
+
+  @Post('mfa/enable')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaEnable(@CurrentUser() user: CurrentUserData, @Body() dto: MfaCodeDto) {
+    return this.mfa.confirmSetup(user.id, dto.code);
+  }
+
+  @Post('mfa/disable')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaDisable(@CurrentUser() user: CurrentUserData, @Body() dto: MfaCodeDto) {
+    return this.mfa.disable(user.id, dto.code);
+  }
+
+  @Post('mfa/recovery-codes')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaRecoveryCodes(
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: MfaCodeDto,
+  ) {
+    return this.mfa.regenerateRecoveryCodes(user.id, dto.code);
   }
 }
