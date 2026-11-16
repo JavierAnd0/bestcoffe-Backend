@@ -50,6 +50,16 @@ export class MpPaymentInputDto {
 }
 
 export class ShippingAddressDto {
+  @ApiPropertyOptional({
+    example: 'Ana Pérez',
+    description:
+      'Quién recibe el pedido (puede no ser el titular de la cuenta)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  recipientName?: string;
+
   @ApiProperty({ example: 'Calle 123 # 45-67' })
   @IsString()
   @MinLength(3)
