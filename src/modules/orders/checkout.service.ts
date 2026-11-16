@@ -107,6 +107,14 @@ export class CheckoutService {
       throw new BadRequestException(`Stock insuficiente: ${outOfStock}`);
     }
 
+    // Ninguna compra puede pasar en $0 (el cálculo ya descarta un cupón que la
+    // deje así; esto es la última barrera).
+    if (priced.totalCents <= 0) {
+      throw new BadRequestException(
+        'El total del pedido debe ser mayor a $0. Revisa el cupón aplicado.',
+      );
+    }
+
     // 2. Crear la orden en estado PENDING dentro de una transacción.
     const order = await this.prisma.$transaction(async (tx) => {
       // Limpiar del carrito persistente los items que se están comprando.

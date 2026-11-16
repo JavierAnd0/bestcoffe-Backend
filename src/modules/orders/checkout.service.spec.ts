@@ -246,3 +246,44 @@ describe('CheckoutService.create sin pagos en línea', () => {
     expect(prisma.order.update).not.toHaveBeenCalled();
   });
 });
+
+/** Ninguna compra puede pasar en $0, aunque el cálculo lo permitiera. */
+describe('CheckoutService.create · total cero', () => {
+  it('rechaza un pedido cuyo total es $0 sin crear la orden', async () => {
+    const prisma = {
+      tenant: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          paymentProvider: 'MERCADOPAGO',
+          mpConnected: false,
+        }),
+      },
+      $transaction: jest.fn(),
+    };
+    const cart = {
+      price: jest.fn().mockResolvedValue({
+        hasStockIssues: false,
+        lines: [],
+        subtotalCents: 0,
+        discountCents: 0,
+        shippingCents: 0,
+        totalCents: 0,
+      }),
+    };
+    const service = new CheckoutService(
+      prisma as unknown as PrismaService,
+      cart as unknown as CartService,
+      {} as StripeService,
+      {} as MercadoPagoService,
+      {} as ConfigService,
+      {} as TenantFeaturesService,
+    );
+
+    await expect(
+      service.create('t1', 'cust-1', {
+        items: [{ variantId: 'v1', quantity: 1 }],
+        shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

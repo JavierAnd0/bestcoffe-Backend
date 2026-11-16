@@ -108,7 +108,7 @@ export class CartService {
 
     // Los cupones son una capacidad de plan: con ella apagada ningún código
     // aplica, aunque exista en la base (p. ej. tras bajar de plan).
-    const discount = !dto.discountCode
+    let discount = !dto.discountCode
       ? undefined
       : discountCodes
         ? await this.validateDiscount(
@@ -123,9 +123,23 @@ export class CartService {
             amountCents: 0,
             reason: 'Esta tienda no tiene códigos de descuento activos',
           };
-    const discountCents = discount?.valid ? discount.amountCents : 0;
-
     const shippingCents = await this.shippingFor(tenantId, subtotalCents);
+
+    // Ninguna compra puede quedar en $0: si el cupón se come todo el total, no
+    // se aplica en esta compra (y el checkout lo vuelve a comprobar).
+    if (
+      discount?.valid &&
+      subtotalCents - discount.amountCents + shippingCents <= 0
+    ) {
+      discount = {
+        code: discount.code,
+        valid: false,
+        amountCents: 0,
+        reason:
+          'Este cupón deja el pedido en $0; no se puede usar en esta compra',
+      };
+    }
+    const discountCents = discount?.valid ? discount.amountCents : 0;
     const totalCents = Math.max(
       0,
       subtotalCents - discountCents + shippingCents,
@@ -372,8 +386,20 @@ export class CartService {
     if (!dc || !dc.active) return invalid('Código inválido');
     if (dc.startsAt && dc.startsAt > now) return invalid('Aún no vigente');
     if (dc.endsAt && dc.endsAt < now) return invalid('Código expirado');
-    if (dc.maxRedemptions && dc.timesRedeemed >= dc.maxRedemptions) {
-      return invalid('Código agotado');
+    if (dc.maxRedemptions) {
+      // timesRedeemed solo cuenta pedidos ya pagados; los pendientes (cobro
+      // manual o pago en curso) también reservan su uso para no pasarse del tope.
+      const pending = await this.prisma.order.count({
+        where: {
+          tenantId,
+          discountCode: dc.code,
+          paymentStatus: 'PENDING',
+          status: { not: 'CANCELLED' },
+        },
+      });
+      if (dc.timesRedeemed + pending >= dc.maxRedemptions) {
+        return invalid('Código agotado');
+      }
     }
     if (dc.minSubtotalCents && subtotalCents < dc.minSubtotalCents) {
       return invalid('No alcanza el mínimo de compra');
@@ -388,7 +414,10 @@ export class CartService {
           tenantId,
           customerId,
           discountCode: dc.code,
-          paymentStatus: 'PAID',
+          // Un pedido pendiente (p. ej. cobro manual) también es un uso: si no,
+          // se podrían hacer varios pedidos con el mismo cupón de un solo uso.
+          paymentStatus: { in: ['PAID', 'PENDING'] },
+          status: { not: 'CANCELLED' },
         },
         select: { id: true },
       });
