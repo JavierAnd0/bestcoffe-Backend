@@ -269,7 +269,9 @@ export class AdminProductsService {
 
     await this.prisma.productImage.delete({ where: { id: imageId } });
     this.revalidation.dispatch(tenantSlug, [`product:${image.product.slug}`]);
-    return { id: imageId, deleted: true };
+    // La URL sale de la base (no del cliente): el front borra el archivo solo
+    // si el backend confirmó que la imagen era de esta tienda.
+    return { id: imageId, deleted: true, url: image.url };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
