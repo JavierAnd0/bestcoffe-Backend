@@ -124,8 +124,7 @@ describe('FeatureGuard', () => {
 describe('Protección por feature en los controladores', () => {
   const featureOf = (target: object) =>
     Reflect.getMetadata(REQUIRE_FEATURE_KEY, target) as
-      | BooleanFeatureKey
-      | undefined;
+      BooleanFeatureKey | undefined;
 
   it.each([
     [BlogController, 'blog'],

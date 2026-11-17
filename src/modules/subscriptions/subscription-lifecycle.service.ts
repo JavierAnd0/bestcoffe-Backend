@@ -9,8 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type SubscriptionScope =
-  | { id: string; customerId: string }
-  | { id: string; tenantId: string };
+  { id: string; customerId: string } | { id: string; tenantId: string };
 
 /**
  * Módulo profundo (Deep Module) que gobierna la máquina de estados e
