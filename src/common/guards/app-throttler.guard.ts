@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { verifyClientIp } from '../crypto/client-ip-signature';
+
+/** Secreto compartido con el front (el mismo de las llamadas internas). */
+const sharedSecret = () => process.env.REVALIDATE_SECRET ?? '';
 
 /**
  * Resuelve la IP del cliente para el rate-limiting.
@@ -20,8 +24,32 @@ import type { Request } from 'express';
  */
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
+  /**
+   * Lecturas del servidor del front sin visitante (render en segundo plano,
+   * caché de datos), firmadas con el secreto compartido: no cuentan contra
+   * ningún límite. Sin esto, todas compartirían el cupo de la IP del servidor
+   * de Next. Las escrituras nunca se saltan el límite.
+   */
+  protected override async shouldSkip(
+    context: ExecutionContext,
+  ): Promise<boolean> {
+    if (await super.shouldSkip(context)) return true;
+    const req = context.switchToHttp().getRequest<Request>();
+    if (!req?.headers || req.method !== 'GET') return false;
+    const v = verifyClientIp(sharedSecret(), req.headers);
+    return v.valid && v.ip === '';
+  }
+
   protected override getTracker(req: Record<string, unknown>): Promise<string> {
     const request = req as unknown as Request;
+
+    // 0. IP del visitante reenviada y firmada por el servidor del front: es la
+    //    única forma de distinguir visitantes cuyas peticiones llegan todas
+    //    desde el servidor de Next. Sin firma válida, se ignora.
+    if (request.headers) {
+      const v = verifyClientIp(sharedSecret(), request.headers);
+      if (v.valid && v.ip) return Promise.resolve(v.ip);
+    }
 
     // 1. Express ya resuelve la IP real del cliente respetando `trust proxy`
     //    (configurado en main.ts para confiar en 1 salto de proxy inverso).

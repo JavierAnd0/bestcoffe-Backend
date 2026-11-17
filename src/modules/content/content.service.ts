@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SiteContentKind } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  isContentPageSlug,
+  storedPageContent,
+  storedPageFlags,
+} from './editorial-pages';
 
 @Injectable()
 export class ContentService {
@@ -37,5 +42,28 @@ export class ContentService {
       spotlight: byKind(SiteContentKind.SPOTLIGHT)[0] ?? null,
       featuredBundle: byKind(SiteContentKind.FEATURED_BUNDLE)[0] ?? null,
     };
+  }
+
+  /**
+   * Página editorial pública de la tienda. Solo si está activada en
+   * `branding.pages` y tiene contenido; si no, 404 (la ruta no existe).
+   */
+  async getPage(tenantId: string, slug: string) {
+    if (!isContentPageSlug(slug)) {
+      throw new NotFoundException('Página no encontrada');
+    }
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { branding: true },
+    });
+    const content = tenant ? storedPageContent(tenant.branding, slug) : null;
+    if (
+      !tenant ||
+      storedPageFlags(tenant.branding)[slug] !== true ||
+      !content
+    ) {
+      throw new NotFoundException('Página no encontrada');
+    }
+    return { slug, ...content };
   }
 }

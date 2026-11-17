@@ -296,6 +296,29 @@ export class MailService {
   }
 
   /** Bienvenida al dueño de una tienda recién creada por el superadmin. */
+  /** Invitación a un miembro nuevo del equipo de una tienda. */
+  async sendMemberInvitation(opts: {
+    to: string;
+    name: string | null | undefined;
+    storeName: string;
+    roleLabel: string;
+    accessUrl: string;
+  }): Promise<void> {
+    const greeting = opts.name ? `Hola ${opts.name}` : 'Hola';
+    await this.send({
+      to: opts.to,
+      subject: `Te agregaron al equipo de ${opts.storeName}`,
+      fallbackLog: `Member invitation ${opts.to} (store: ${opts.storeName}, role: ${opts.roleLabel}). Access: ${opts.accessUrl}`,
+      html: `
+        <p>${greeting},</p>
+        <p>Te agregaron al equipo de <strong>${opts.storeName}</strong> con el rol <strong>${opts.roleLabel}</strong>.</p>
+        <p><a href="${opts.accessUrl}">Entrar al panel</a></p>
+        <p>Te pediremos tu correo para enviarte un enlace de acceso seguro (sin contraseña).</p>
+        <p>Si no esperabas este correo, puedes ignorarlo.</p>
+      `,
+    });
+  }
+
   async sendTenantWelcome(
     to: string,
     ownerName: string | null | undefined,

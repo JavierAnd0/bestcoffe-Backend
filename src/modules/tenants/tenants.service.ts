@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { resolvePublicNewsletterConfig } from '../newsletter/newsletter-config';
 import { resolveShippingRule } from '../cart/shipping-rule';
+import { publicBranding } from '../content/editorial-pages';
 
 @Injectable()
 export class TenantsService {
@@ -47,6 +48,9 @@ export class TenantsService {
       await this.tenantFeatures.resolve(tenantId);
     return {
       ...rest,
+      // Sin el texto de las páginas editoriales (se lee aparte) y con
+      // `pages` efectivas: una página sin contenido no cuenta como activa.
+      branding: publicBranding(rest.branding),
       features: flags,
       suspended,
       // El storefront muestra el panel de interruptores solo en una tienda sandbox.

@@ -22,14 +22,11 @@ interface RequestWithAuth extends Request {
  * roles exigidos por @Roles. Resuelve el rol desde TenantMembership y lo deja
  * en req.user.role + CLS. Debe correr DESPUÉS de AuthGuard y TenantGuard.
  *
- * Jerarquía: PLATFORM_OWNER > TENANT_OWNER > TENANT_EDITOR / TENANT_ORDERS.
+ * Reglas: PLATFORM_OWNER y TENANT_OWNER pasan siempre. TENANT_EDITOR
+ * (catálogo y contenido) y TENANT_ORDERS (pedidos y suscripciones) son roles
+ * hermanos: cada uno solo entra donde @Roles lo nombra. Antes compartían rango
+ * y uno pasaba por las rutas del otro.
  */
-const RANK: Record<OperatorRole, number> = {
-  TENANT_ORDERS: 1,
-  TENANT_EDITOR: 1,
-  TENANT_OWNER: 2,
-  PLATFORM_OWNER: 3,
-};
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -68,7 +65,9 @@ export class RolesGuard implements CanActivate {
     this.cls.set(CTX.ROLE, role);
 
     const allowed =
-      role === 'PLATFORM_OWNER' || required.some((r) => RANK[role] >= RANK[r]);
+      role === 'PLATFORM_OWNER' ||
+      role === 'TENANT_OWNER' ||
+      required.includes(role);
     if (!allowed) {
       throw new ForbiddenException('Rol insuficiente para esta acción');
     }
