@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CartModule } from '../cart/cart.module';
 import { StripeModule } from '../stripe/stripe.module';
 import { AdminSubscriptionsController } from './admin-subscriptions.controller';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
@@ -8,7 +9,7 @@ import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 import { SubscriptionRenewalService } from './subscription-renewal.service';
 
 @Module({
-  imports: [StripeModule],
+  imports: [StripeModule, CartModule],
   controllers: [AdminSubscriptionsController, CustomerSubscriptionsController],
   providers: [
     SubscriptionLifecycleService,

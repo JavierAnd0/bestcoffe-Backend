@@ -11,8 +11,14 @@ import {
   type FeatureFlags,
 } from './tier-features';
 import { BlogController } from '../../modules/blog/blog.controller';
+import { AdminBlogController } from '../../modules/blog/admin-blog.controller';
+import { AdminBrewGuidesController } from '../../modules/discovery/admin-brew-guides.controller';
+import { AdminLocationsController } from '../../modules/discovery/admin-locations.controller';
+import { AdminContentController } from '../../modules/content/admin-content.controller';
 import { ProductsController } from '../../modules/products/products.controller';
 import { CollectionsController } from '../../modules/collections/collections.controller';
+import { AdminCollectionsController } from '../../modules/collections/admin-collections.controller';
+import { AdminSubscriptionsController } from '../../modules/subscriptions/admin-subscriptions.controller';
 import { QuizController } from '../../modules/quiz/quiz.controller';
 import { CartController } from '../../modules/cart/cart.controller';
 import { CheckoutController } from '../../modules/orders/checkout.controller';
@@ -128,8 +134,11 @@ describe('Protección por feature en los controladores', () => {
 
   it.each([
     [BlogController, 'blog'],
+    [AdminBlogController, 'blog'],
     [ProductsController, 'catalog'],
     [CollectionsController, 'catalog'],
+    [AdminCollectionsController, 'catalog'],
+    [AdminSubscriptionsController, 'subscriptions'],
     [QuizController, 'catalog'],
     [CartController, 'checkout'],
     [AdminPromotionsController, 'discountCodes'],
@@ -137,6 +146,16 @@ describe('Protección por feature en los controladores', () => {
     [GiftsAdminController, 'gifts'],
   ] as const)('%p exige la feature %s en toda la clase', (ctrl, feature) => {
     expect(featureOf(ctrl)).toBe(feature);
+  });
+
+  // Contenido incluido en todos los planes: la lectura pública tampoco exige
+  // feature. Si algún día se vende por separado, esta prueba obliga a decidirlo.
+  it.each([
+    [AdminBrewGuidesController],
+    [AdminLocationsController],
+    [AdminContentController],
+  ] as const)('%p no exige feature (incluido en todos los planes)', (ctrl) => {
+    expect(featureOf(ctrl)).toBeUndefined();
   });
 
   it.each([

@@ -56,11 +56,14 @@ export class AdminSubscriptionsService {
         discountPct: true,
         nextShipAt: true,
         lastShippedAt: true,
+        createdAt: true,
         customer: { select: { id: true, email: true, name: true } },
         variant: {
           select: {
             sizeGrams: true,
             grind: true,
+            priceSubscription: true,
+            priceOneTime: true,
             product: { select: { slug: true, name: true } },
           },
         },

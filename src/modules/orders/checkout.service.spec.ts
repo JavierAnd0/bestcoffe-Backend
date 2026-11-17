@@ -287,3 +287,212 @@ describe('CheckoutService.create · total cero', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Pedido por suscripción: crea la suscripción en la misma transacción del
+ * pedido, esperando el pago, y enlaza el pedido.
+ */
+describe('CheckoutService.create · suscripción', () => {
+  const priced = {
+    hasStockIssues: false,
+    lines: [
+      {
+        variantId: 'v1',
+        productName: 'Café',
+        sizeGrams: 250,
+        grind: 'WHOLE_BEAN',
+        unitCents: 40_000_00,
+        quantity: 1,
+        lineCents: 40_000_00,
+      },
+    ],
+    subtotalCents: 40_000_00,
+    discountCents: 0,
+    shippingCents: 0,
+    totalCents: 40_000_00,
+    discount: undefined,
+  };
+
+  const build = (
+    opts: {
+      subscriptions?: boolean;
+      availability?: string;
+      existing?: Array<Record<string, unknown>>;
+    } = {},
+  ) => {
+    const tx = {
+      cartItem: { deleteMany: jest.fn() },
+      subscription: {
+        findMany: jest.fn().mockResolvedValue(opts.existing ?? []),
+        create: jest.fn().mockResolvedValue({ id: 'sub-new' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      order: {
+        create: jest.fn().mockResolvedValue({ id: 'ord-1', totalCents: 1 }),
+      },
+    };
+    const prisma = {
+      tenant: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ paymentProvider: 'STRIPE', mpConnected: false }),
+      },
+      productVariant: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'v1',
+            product: {
+              name: 'Café',
+              type: 'COFFEE',
+              status: 'ACTIVE',
+              subscriptionAvailability: opts.availability ?? 'YES',
+            },
+          },
+        ]),
+      },
+      $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
+    };
+    const cart = { price: jest.fn().mockResolvedValue(priced) };
+    const service = new CheckoutService(
+      prisma as unknown as PrismaService,
+      cart as unknown as CartService,
+      {} as StripeService,
+      {} as MercadoPagoService,
+      { get: jest.fn().mockReturnValue(false) } as unknown as ConfigService,
+      {
+        get: jest.fn().mockResolvedValue({
+          onlinePayments: false,
+          subscriptions: opts.subscriptions ?? true,
+        }),
+      } as unknown as TenantFeaturesService,
+    );
+    return { service, tx, cart };
+  };
+
+  const dto = (over: Record<string, unknown> = {}) =>
+    ({
+      items: [{ variantId: 'v1', quantity: 1 }],
+      mode: PurchaseMode.SUBSCRIPTION,
+      frequencyDays: 21,
+      shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+      ...over,
+    }) as never;
+
+  it('crea la suscripción esperando el pago y enlaza el pedido', async () => {
+    const { service, tx } = build();
+
+    const result = await service.create('t1', 'c1', dto());
+
+    const subArg = (tx.subscription.create.mock.calls[0] as unknown[])[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(subArg.data).toMatchObject({
+      tenantId: 't1',
+      customerId: 'c1',
+      variantId: 'v1',
+      frequencyDays: 21,
+      status: 'PAYMENT_FAILED',
+      lastShippedAt: null,
+      shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+    });
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ subscriptionId: 'sub-new' }) as unknown,
+      }),
+    );
+    expect(result).toMatchObject({
+      provider: 'MANUAL',
+      summary: { subscriptionIds: ['sub-new'] },
+    });
+  });
+
+  it('la frecuencia de la línea manda sobre la del pedido; sin ninguna, 30 días', async () => {
+    const { service, tx } = build();
+    await service.create(
+      't1',
+      'c1',
+      dto({ items: [{ variantId: 'v1', quantity: 1, frequencyDays: 14 }] }),
+    );
+    await service.create('t1', 'c1', dto({ frequencyDays: undefined }));
+    const freqs = tx.subscription.create.mock.calls.map(
+      (c: [{ data: { frequencyDays: number } }]) => c[0].data.frequencyDays,
+    );
+    expect(freqs).toEqual([14, 30]);
+  });
+
+  it('reutiliza la suscripción que aún espera su primer pago (no duplica)', async () => {
+    const { service, tx } = build({
+      existing: [
+        {
+          id: 'sub-old',
+          variantId: 'v1',
+          status: 'PAYMENT_FAILED',
+          lastShippedAt: null,
+          variant: { product: { name: 'Café' } },
+        },
+      ],
+    });
+
+    await service.create('t1', 'c1', dto());
+
+    expect(tx.subscription.create).not.toHaveBeenCalled();
+    expect(tx.subscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sub-old' } }),
+    );
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ subscriptionId: 'sub-old' }) as unknown,
+      }),
+    );
+  });
+
+  it('rechaza (409) si ya tiene una suscripción viva a ese café', async () => {
+    const { service, tx } = build({
+      existing: [
+        {
+          id: 'sub-act',
+          variantId: 'v1',
+          status: 'ACTIVE',
+          lastShippedAt: new Date(),
+          variant: { product: { name: 'Café' } },
+        },
+      ],
+    });
+
+    await expect(service.create('t1', 'c1', dto())).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(tx.order.create).not.toHaveBeenCalled();
+  });
+
+  it('tienda sin la capacidad subscriptions responde 402 sin cotizar', async () => {
+    const { service, cart } = build({ subscriptions: false });
+    await expect(service.create('t1', 'c1', dto())).rejects.toMatchObject({
+      status: 402,
+    });
+    expect(cart.price).not.toHaveBeenCalled();
+  });
+
+  it('rechaza productos no suscribibles y cantidades mayores a 1', async () => {
+    const { service } = build({ availability: 'NO' });
+    await expect(service.create('t1', 'c1', dto())).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    const ok = build();
+    await expect(
+      ok.service.create(
+        't1',
+        'c1',
+        dto({ items: [{ variantId: 'v1', quantity: 2 }] }),
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('un invitado no puede crear un pedido por suscripción', async () => {
+    const { service, cart } = build();
+    await expect(
+      service.create('t1', 'c1', dto(), { guest: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(cart.price).not.toHaveBeenCalled();
+  });
+});

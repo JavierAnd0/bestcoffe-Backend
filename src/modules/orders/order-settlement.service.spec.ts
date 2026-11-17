@@ -18,6 +18,11 @@ describe('OrderSettlementService', () => {
     order: { findUnique: jest.Mock; update: jest.Mock };
     productVariant: { updateMany: jest.Mock; update: jest.Mock };
     discountCode: { updateMany: jest.Mock };
+    subscription: {
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+    };
   };
   let prismaMock: { $transaction: jest.Mock };
 
@@ -36,6 +41,11 @@ describe('OrderSettlementService', () => {
       },
       discountCode: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      subscription: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({}),
       },
     };
     prismaMock = {
@@ -131,6 +141,121 @@ describe('OrderSettlementService', () => {
         timesRedeemed: { gt: 0 },
       },
       data: { timesRedeemed: { decrement: 1 } },
+    });
+  });
+
+  describe('primer pedido de una suscripción', () => {
+    const subOrder = (over: Record<string, unknown> = {}) => ({
+      id: 'ord-s',
+      tenantId: 'ten-1',
+      customerId: 'cus-1',
+      source: 'CHECKOUT',
+      subscriptionId: 'sub-1',
+      paymentStatus: 'PENDING',
+      discountCode: null,
+      items: [{ variantId: 'var-1', quantity: 1 }],
+      ...over,
+    });
+
+    it('al pagarse (manual) activa la suscripción que esperaba ese pago', async () => {
+      txMock.order.findUnique.mockResolvedValue(subOrder());
+      txMock.subscription.findMany.mockResolvedValue([
+        { id: 'sub-1', variantId: 'var-1', frequencyDays: 14 },
+      ]);
+
+      const result = await service.settlePaidOrder('ord-s', {
+        provider: 'MANUAL',
+      });
+
+      expect(result).toEqual({ settled: true });
+      expect(txMock.subscription.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            customerId: 'cus-1',
+            variantId: { in: ['var-1'] },
+            status: 'PAYMENT_FAILED',
+            lastShippedAt: null,
+          }) as unknown,
+        }),
+      );
+      const call = txMock.subscription.update.mock.calls[0] as [
+        {
+          where: unknown;
+          data: { status: string; lastShippedAt: Date; nextShipAt: Date };
+        },
+      ];
+      expect(call[0].where).toEqual({ id: 'sub-1' });
+      expect(call[0].data.status).toBe('ACTIVE');
+      const days =
+        (call[0].data.nextShipAt.getTime() -
+          call[0].data.lastShippedAt.getTime()) /
+        86_400_000;
+      expect(days).toBe(14);
+      expect(txMock.productVariant.updateMany).toHaveBeenCalled();
+    });
+
+    it('no activa si el cliente ya tiene otra suscripción ACTIVE de esa variante', async () => {
+      txMock.order.findUnique.mockResolvedValue(subOrder());
+      txMock.subscription.findMany.mockResolvedValue([
+        { id: 'sub-1', variantId: 'var-1', frequencyDays: 14 },
+      ]);
+      txMock.subscription.findFirst.mockResolvedValue({ id: 'sub-otra' });
+
+      const result = await service.settlePaidOrder('ord-s', {
+        provider: 'MANUAL',
+      });
+
+      expect(result).toEqual({ settled: true });
+      expect(txMock.subscription.update).not.toHaveBeenCalled();
+    });
+
+    it('un pedido normal o una renovación no toca suscripciones', async () => {
+      txMock.order.findUnique.mockResolvedValue(
+        subOrder({ source: 'SUBSCRIPTION_RENEWAL' }),
+      );
+      await service.settlePaidOrder('ord-s', { provider: 'MANUAL' });
+      txMock.order.findUnique.mockResolvedValue(
+        subOrder({ subscriptionId: null }),
+      );
+      await service.settlePaidOrder('ord-s', { provider: 'MANUAL' });
+
+      expect(txMock.subscription.findMany).not.toHaveBeenCalled();
+    });
+
+    it('cancelar el primer pedido sin pagar cancela la suscripción pendiente', async () => {
+      txMock.order.findUnique.mockResolvedValue(subOrder());
+      txMock.subscription.findMany.mockResolvedValue([
+        { id: 'sub-1', variantId: 'var-1' },
+      ]);
+      (txMock.order as unknown as { findFirst: jest.Mock }).findFirst = jest
+        .fn()
+        .mockResolvedValue(null);
+
+      await service.cancelOrderAndRestoreInventory('ord-s', {
+        include: { items: true },
+      });
+
+      expect(txMock.productVariant.update).not.toHaveBeenCalled();
+      expect(txMock.subscription.update).toHaveBeenCalledWith({
+        where: { id: 'sub-1' },
+        data: { status: 'CANCELLED' },
+      });
+    });
+
+    it('no la cancela si otro pedido abierto espera el pago de esa suscripción', async () => {
+      txMock.order.findUnique.mockResolvedValue(subOrder());
+      txMock.subscription.findMany.mockResolvedValue([
+        { id: 'sub-1', variantId: 'var-1' },
+      ]);
+      (txMock.order as unknown as { findFirst: jest.Mock }).findFirst = jest
+        .fn()
+        .mockResolvedValue({ id: 'ord-otro' });
+
+      await service.cancelOrderAndRestoreInventory('ord-s', {
+        include: { items: true },
+      });
+
+      expect(txMock.subscription.update).not.toHaveBeenCalled();
     });
   });
 });

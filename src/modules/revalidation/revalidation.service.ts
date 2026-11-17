@@ -15,6 +15,10 @@ import { ConfigService } from '@nestjs/config';
  *   content             → home
  *   settings            → shell del sitio (branding/nombre del tenant)
  *   blog · blog:<slug>  → blog
+ *   brew-guides · brew-guide:<slug> → guías de preparación
+ *   locations           → sedes físicas (/tiendas)
+ *
+ * El front recibe `{ tenantSlug, tags }` y solo invalida la caché de esa tienda.
  */
 @Injectable()
 export class RevalidationService {

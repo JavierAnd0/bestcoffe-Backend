@@ -12,10 +12,7 @@ import {
   CartLineDto,
   CartPriceResponseDto,
 } from './dto/cart-price-response.dto';
-
-// Defaults de envío (centavos COP). Sobreescribibles vía Tenant.features.
-const DEFAULT_FREE_SHIPPING_THRESHOLD = 150_000 * 100;
-const DEFAULT_SHIPPING_FLAT = 12_000 * 100;
+import { resolveShippingRule } from './shipping-rule';
 
 @Injectable()
 export class CartService {
@@ -442,12 +439,8 @@ export class CartService {
       where: { id: tenantId },
       select: { features: true },
     });
-    const features = (tenant?.features ?? {}) as Record<string, unknown>;
-    const threshold =
-      (features.freeShippingThresholdCents as number) ??
-      DEFAULT_FREE_SHIPPING_THRESHOLD;
-    const flat =
-      (features.shippingFlatCents as number) ?? DEFAULT_SHIPPING_FLAT;
-    return subtotalCents >= threshold ? 0 : flat;
+    const { freeShippingThresholdCents, shippingFlatCents } =
+      resolveShippingRule(tenant?.features);
+    return subtotalCents >= freeShippingThresholdCents ? 0 : shippingFlatCents;
   }
 }

@@ -240,6 +240,37 @@ export class MailService {
     });
   }
 
+  /**
+   * Renovación de suscripción sin cobro en línea: se creó el pedido del nuevo
+   * envío y queda pendiente de pago, igual que el primer pedido.
+   */
+  async sendSubscriptionRenewalPending(opts: {
+    to: string;
+    customerName: string | null;
+    orderId: string;
+    storeName: string;
+    productName: string;
+    totalCents: number;
+  }): Promise<void> {
+    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const shortId = opts.orderId.slice(-6).toUpperCase();
+    const total = `$${(opts.totalCents / 100).toLocaleString('es-CO')}`;
+
+    await this.send({
+      to: opts.to,
+      subject: `Tu próximo envío de ${opts.storeName}: pedido #${shortId} pendiente de pago`,
+      fallbackLog: `Subscription renewal pending for ${opts.to} (Order: ${opts.orderId})`,
+      html: `
+        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
+          <h2>Tu próximo envío está listo</h2>
+          <p>${greeting}, generamos el pedido <strong>#${shortId}</strong> de tu suscripción a <strong>${opts.productName}</strong> en <strong>${opts.storeName}</strong>.</p>
+          <p>Total: <strong>${total}</strong>. El pago se hace igual que en tu primer pedido; despacharemos en cuanto lo confirmemos.</p>
+          <p>Puedes pausar, saltar o cancelar tu suscripción desde tu cuenta.</p>
+        </div>
+      `,
+    });
+  }
+
   /** Notificación de pedido cancelado (CANCELLED). */
   async sendOrderCancelled(opts: {
     to: string;

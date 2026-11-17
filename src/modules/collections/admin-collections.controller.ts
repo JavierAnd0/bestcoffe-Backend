@@ -13,6 +13,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditInterceptor } from '../../common/interceptors/audit.interceptor';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -28,7 +30,8 @@ import {
 @ApiTags('admin/collections')
 @ApiBearerAuth()
 @Controller('v1/admin/collections')
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, FeatureGuard)
+@RequireFeature('catalog')
 @Roles('TENANT_EDITOR')
 @UseInterceptors(AuditInterceptor)
 export class AdminCollectionsController {

@@ -97,4 +97,47 @@ describe('SubscriptionLifecycleService', () => {
       14 * 24 * 60 * 60 * 1000,
     );
   });
+
+  it('una suscripción que espera el pago de su primer pedido no se puede pausar, reanudar ni saltar; sí cancelar', async () => {
+    const pending = {
+      id: 'sub-1',
+      status: SubStatus.PAYMENT_FAILED,
+      lastShippedAt: null,
+      nextShipAt: new Date(),
+      frequencyDays: 14,
+    };
+    prisma.subscription.findFirst.mockResolvedValue(pending);
+    const scope = { id: 'sub-1', customerId: 'cust-1' };
+
+    await expect(service.pause(scope, { id: true })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.resume(scope, { id: true })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.skipNext(scope, { id: true })).rejects.toThrow(
+      BadRequestException,
+    );
+    const cancelled = (await service.cancel(scope, {
+      id: true,
+      status: true,
+    })) as unknown as { status: SubStatus };
+    expect(cancelled.status).toBe(SubStatus.CANCELLED);
+  });
+
+  it('skipNext: se puede volver a saltar estando en SKIPPED_NEXT', async () => {
+    const base = new Date(Date.now() + 86_400_000);
+    prisma.subscription.findFirst.mockResolvedValue({
+      id: 'sub-1',
+      status: SubStatus.SKIPPED_NEXT,
+      lastShippedAt: new Date(),
+      nextShipAt: base,
+      frequencyDays: 7,
+    });
+    const skipped = (await service.skipNext(
+      { id: 'sub-1', tenantId: 'ten-1' },
+      { id: true, nextShipAt: true },
+    )) as unknown as { nextShipAt: Date };
+    expect(skipped.nextShipAt.getTime() - base.getTime()).toBe(7 * 86_400_000);
+  });
 });

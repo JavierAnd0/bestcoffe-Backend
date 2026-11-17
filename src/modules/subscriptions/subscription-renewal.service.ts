@@ -1,10 +1,48 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { GrindFormat, OrderSource, SubStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  OrderSource,
+  PaymentProvider,
+  Prisma,
+  SubAvail,
+  SubStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { StripeService } from '../stripe/stripe.service';
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
+import type { FeatureFlags } from '../../common/features/tier-features';
+import { CartService } from '../cart/cart.service';
+import { PurchaseMode } from '../cart/dto/price-cart.dto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Fallo del cobro fuera de sesión: el único caso que marca PAYMENT_FAILED. */
+class OffSessionChargeError extends Error {}
+
+type DueSubscription = {
+  id: string;
+  tenantId: string;
+  customerId: string;
+  status: SubStatus;
+  frequencyDays: number;
+  discountPct: number;
+  nextShipAt: Date;
+  shippingAddress: Prisma.JsonValue;
+  customer: { id: string; stripeCustomerId: string | null };
+  tenant: { paymentProvider: PaymentProvider | null };
+  variant: {
+    id: string;
+    product: { name: string; subscriptionAvailability: SubAvail };
+  };
+};
+
+export type RenewalOutcome = 'MANUAL' | 'STRIPE' | 'SKIPPED';
 
 @Injectable()
 export class SubscriptionRenewalService {
@@ -14,155 +52,285 @@ export class SubscriptionRenewalService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly features: TenantFeaturesService,
+    private readonly cart: CartService,
+    private readonly config: ConfigService,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
   /**
-   * Procesa todas las suscripciones activas cuya fecha de próximo envío ya haya llegado.
-   * Por cada una crea la orden recurrente, ejecuta el cargo en Stripe y actualiza el próximo envío.
+   * Procesa las suscripciones cuyo próximo envío ya llegó. Por cada una crea el
+   * pedido recurrente y avanza `nextShipAt`.
+   *
+   * Con "pedidos sin pagos" (lo normal hoy) el pedido nace PENDIENTE, igual que
+   * un pedido del checkout sin pago en línea: el operador lo cobra por fuera y
+   * lo marca pagado, y la liquidación descuenta inventario. Solo en el modo de
+   * pruebas de plataforma (Stripe habilitado y método guardado) se cobra fuera
+   * de sesión; un rechazo de ese cobro es lo único que marca PAYMENT_FAILED.
    */
   async processDueSubscriptions(): Promise<{
     processed: number;
+    skipped: number;
     errors: number;
   }> {
     const now = new Date();
 
     const dueSubscriptions = await this.prisma.subscription.findMany({
       where: {
-        status: SubStatus.ACTIVE,
+        // SKIPPED_NEXT ya tiene `nextShipAt` adelantado: al llegar esa fecha se
+        // renueva y vuelve a ACTIVE.
+        status: { in: [SubStatus.ACTIVE, SubStatus.SKIPPED_NEXT] },
         nextShipAt: { lte: now },
         // Una tienda suspendida por cobro no cobra renovaciones a sus clientes.
         tenant: { billingStatus: { notIn: ['CANCELLED', 'INACTIVE'] } },
       },
-      include: {
+      select: {
+        id: true,
+        tenantId: true,
+        customerId: true,
+        status: true,
+        frequencyDays: true,
+        discountPct: true,
+        nextShipAt: true,
+        shippingAddress: true,
         customer: { select: { id: true, stripeCustomerId: true } },
+        tenant: { select: { paymentProvider: true } },
         variant: {
           select: {
             id: true,
-            sizeGrams: true,
-            grind: true,
-            priceSubscription: true,
-            priceOneTime: true,
-            product: { select: { name: true } },
+            product: {
+              select: { name: true, subscriptionAvailability: true },
+            },
           },
         },
       },
+      orderBy: { nextShipAt: 'asc' },
       take: 50,
     });
 
     let processed = 0;
+    let skipped = 0;
     let errors = 0;
 
     for (const sub of dueSubscriptions) {
       try {
         // Sin la capacidad `subscriptions` (plan o suspensión) no se renueva:
-        // la suscripción queda esperando, sin cobro ni marca de fallo.
+        // la suscripción queda esperando, sin pedido ni marca de fallo.
         const flags = await this.features.get(sub.tenantId);
         if (!flags.subscriptions) continue;
-        await this.renewSubscription(sub);
-        processed++;
+        const outcome = await this.renewSubscription(sub, flags);
+        if (outcome === 'SKIPPED') skipped++;
+        else processed++;
       } catch (err: unknown) {
         errors++;
         const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
           `Error procesando renovación de suscripción ${sub.id}: ${message}`,
         );
-
-        // Marca la suscripción en fallo de pago si el cobro fue rechazado
-        await this.prisma.subscription
-          .update({
-            where: { id: sub.id },
-            data: { status: SubStatus.PAYMENT_FAILED },
-          })
-          .catch(() => undefined);
+        // Solo un cobro rechazado es un fallo de pago. Un error de otro tipo
+        // (base de datos, red) se reintenta en la siguiente ejecución.
+        if (err instanceof OffSessionChargeError) {
+          await this.prisma.subscription
+            .update({
+              where: { id: sub.id },
+              data: { status: SubStatus.PAYMENT_FAILED },
+            })
+            .catch(() => undefined);
+        }
       }
     }
 
-    return { processed, errors };
+    return { processed, skipped, errors };
   }
 
-  private async renewSubscription(sub: {
-    id: string;
-    tenantId: string;
-    customerId: string;
-    frequencyDays: number;
-    discountPct: number;
-    shippingAddress: unknown;
-    customer: { id: string; stripeCustomerId: string | null };
-    variant: {
-      id: string;
-      sizeGrams: number;
-      grind: GrindFormat;
-      priceSubscription: number | null;
-      priceOneTime: number;
-      product: { name: string };
-    };
-  }) {
-    if (!sub.customer.stripeCustomerId) {
-      throw new Error(
-        'El cliente no tiene un método de pago registrado en Stripe',
+  /**
+   * Stripe solo cobra renovaciones tras su bandera de plataforma y con un
+   * método guardado (alta por SetupIntent); en cualquier otro caso el pedido es
+   * manual. MercadoPago no tiene cobro fuera de sesión implementado.
+   */
+  private canChargeOffSession(
+    sub: DueSubscription,
+    flags: FeatureFlags,
+  ): boolean {
+    return (
+      this.config.get<boolean>('stripe.checkoutEnabled') === true &&
+      flags.onlinePayments &&
+      sub.tenant.paymentProvider !== PaymentProvider.MERCADOPAGO &&
+      !!sub.customer.stripeCustomerId
+    );
+  }
+
+  private async renewSubscription(
+    sub: DueSubscription,
+    flags: FeatureFlags,
+  ): Promise<RenewalOutcome> {
+    if (sub.variant.product.subscriptionAvailability === SubAvail.NO) {
+      this.logger.warn(
+        `Suscripción ${sub.id}: "${sub.variant.product.name}" ya no se ofrece por suscripción; se reintenta en la próxima ejecución`,
       );
+      return 'SKIPPED';
     }
 
-    const unitCents = sub.variant.priceSubscription ?? sub.variant.priceOneTime;
-    const discountCents =
-      sub.discountPct > 0 ? Math.round((unitCents * sub.discountPct) / 100) : 0;
-    const totalCents = Math.max(0, unitCents - discountCents);
-
-    // 1. Crear la orden de suscripción en estado PENDING
-    const order = await this.prisma.order.create({
-      data: {
-        tenantId: sub.tenantId,
-        customerId: sub.customerId,
-        source: OrderSource.SUBSCRIPTION_RENEWAL,
-        status: 'RECEIVED',
-        paymentStatus: 'PENDING',
-        subscriptionId: sub.id,
-        shippingAddress: sub.shippingAddress ?? {},
-        subtotalCents: unitCents,
-        discountCents,
-        shippingCents: 0,
-        totalCents,
-        items: {
-          create: [
-            {
-              tenantId: sub.tenantId,
-              variantId: sub.variant.id,
-              productName: sub.variant.product.name,
-              variantName: `${sub.variant.sizeGrams}g · ${sub.variant.grind}`,
-              grind: sub.variant.grind,
-              sizeGrams: sub.variant.sizeGrams,
-              unitCents,
-              quantity: 1,
-              lineCents: unitCents,
-            },
-          ],
+    // Mismo cálculo que el checkout en modo suscripción: precio de suscripción,
+    // producto activo, stock y regla de envío de la tienda.
+    let priced: Awaited<ReturnType<CartService['price']>>;
+    try {
+      priced = await this.cart.price(
+        sub.tenantId,
+        {
+          items: [{ variantId: sub.variant.id, quantity: 1 }],
+          mode: PurchaseMode.SUBSCRIPTION,
         },
-      },
-    });
+        sub.customerId,
+      );
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        this.logger.warn(
+          `Suscripción ${sub.id}: variante no disponible (${err.message}); se reintenta en la próxima ejecución`,
+        );
+        return 'SKIPPED';
+      }
+      throw err;
+    }
+    // Igual que el checkout: sin stock no se crea el pedido (la liquidación
+    // descuenta el stock al pagarse). Queda vencida y se reintenta mañana.
+    if (priced.hasStockIssues) {
+      this.logger.warn(
+        `Suscripción ${sub.id}: sin stock de "${sub.variant.product.name}"; se reintenta en la próxima ejecución`,
+      );
+      return 'SKIPPED';
+    }
 
-    // 2. Realizar el cobro off-session en Stripe
-    const { piId } = await this.stripe.chargeOffSession(
-      sub.customer.stripeCustomerId,
-      totalCents,
-      order.id,
-      sub.tenantId,
+    const line = priced.lines[0];
+    const subtotalCents = priced.subtotalCents;
+    // Descuento propio de la suscripción (editable en el panel), sobre el
+    // precio de suscripción. Los cupones solo aplican al primer pedido.
+    const discountCents =
+      sub.discountPct > 0
+        ? Math.round((subtotalCents * sub.discountPct) / 100)
+        : 0;
+    const totalCents = Math.max(
+      0,
+      subtotalCents - discountCents + priced.shippingCents,
     );
+    if (totalCents <= 0) {
+      this.logger.warn(
+        `Suscripción ${sub.id}: el pedido quedaría en $0; no se crea`,
+      );
+      return 'SKIPPED';
+    }
 
-    // 3. Actualizar la orden y avanzar la fecha de la suscripción
-    const nextShipAt = new Date(Date.now() + sub.frequencyDays * DAY_MS);
+    const now = new Date();
+    const nextShipAt = new Date(now.getTime() + sub.frequencyDays * DAY_MS);
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: order.id },
-        data: { stripePaymentIntentId: piId },
-      }),
-      this.prisma.subscription.update({
-        where: { id: sub.id },
+    // Avanzar la suscripción y crear el pedido en una sola transacción. La
+    // actualización condicionada a la fecha leída evita dos pedidos si dos
+    // ejecuciones (cron y evento manual) toman la misma suscripción.
+    const order = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.subscription.updateMany({
+        where: { id: sub.id, status: sub.status, nextShipAt: sub.nextShipAt },
         data: {
-          lastShippedAt: new Date(),
+          status: SubStatus.ACTIVE,
+          lastShippedAt: now,
           nextShipAt,
         },
-      }),
-    ]);
+      });
+      if (claimed.count === 0) return null;
+
+      return tx.order.create({
+        data: {
+          tenantId: sub.tenantId,
+          customerId: sub.customerId,
+          source: OrderSource.SUBSCRIPTION_RENEWAL,
+          status: 'RECEIVED',
+          paymentStatus: 'PENDING',
+          subscriptionId: sub.id,
+          shippingAddress: sub.shippingAddress ?? {},
+          subtotalCents,
+          discountCents,
+          shippingCents: priced.shippingCents,
+          totalCents,
+          items: {
+            create: [
+              {
+                tenantId: sub.tenantId,
+                variantId: line.variantId,
+                productName: line.productName,
+                variantName: `${line.sizeGrams}g · ${line.grind}`,
+                grind: line.grind,
+                sizeGrams: line.sizeGrams,
+                unitCents: line.unitCents,
+                quantity: 1,
+                lineCents: line.lineCents,
+              },
+            ],
+          },
+        },
+        select: { id: true },
+      });
+    });
+    if (!order) return 'SKIPPED';
+
+    if (!this.canChargeOffSession(sub, flags)) {
+      // Pedido manual: el operador lo ve como cualquier pedido pendiente.
+      this.notifyRenewalPending(order.id, line.productName, totalCents);
+      return 'MANUAL';
+    }
+
+    // Modo de pruebas de plataforma: cobro fuera de sesión. El webhook
+    // payment_intent.succeeded liquida el pedido.
+    try {
+      const { piId } = await this.stripe.chargeOffSession(
+        sub.customer.stripeCustomerId!,
+        totalCents,
+        order.id,
+        sub.tenantId,
+      );
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { stripePaymentIntentId: piId },
+      });
+      return 'STRIPE';
+    } catch (err) {
+      await this.prisma.order
+        .update({ where: { id: order.id }, data: { paymentStatus: 'FAILED' } })
+        .catch(() => undefined);
+      throw new OffSessionChargeError(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  /** Aviso al cliente del pedido de renovación pendiente (no bloquea). */
+  private notifyRenewalPending(
+    orderId: string,
+    productName: string,
+    totalCents: number,
+  ): void {
+    if (!this.mail) return;
+    const mail = this.mail;
+    void this.prisma.order
+      .findUnique({
+        where: { id: orderId },
+        select: {
+          customer: { select: { email: true, name: true } },
+          tenant: { select: { name: true } },
+        },
+      })
+      .then((o) => {
+        if (!o?.customer?.email) return;
+        return mail.sendSubscriptionRenewalPending({
+          to: o.customer.email,
+          customerName: o.customer.name,
+          orderId,
+          storeName: o.tenant.name,
+          productName,
+          totalCents,
+        });
+      })
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `No se pudo enviar el aviso de renovación del pedido ${orderId}: ${String(err)}`,
+        ),
+      );
   }
 }

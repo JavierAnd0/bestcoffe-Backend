@@ -2,7 +2,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsEmail,
   IsHexColor,
+  ValidateIf,
   Matches,
   IsInt,
   IsOptional,
@@ -38,6 +40,40 @@ export class BrandingDto {
     message: 'El logo debe ser una URL https o una ruta que empiece por /',
   })
   logoUrl?: string;
+
+  // ── Datos de la empresa (factura, textos legales y contacto del storefront).
+  // Cadena vacía = borrar el dato (el servicio fusiona el objeto).
+
+  @ApiPropertyOptional({ example: 'Mi Café S.A.S.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  legalName?: string;
+
+  @ApiPropertyOptional({ example: '900.000.000-0', description: 'NIT' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  legalId?: string;
+
+  @ApiPropertyOptional({ example: 'hola@micafe.co' })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== '')
+  @IsEmail({}, { message: 'El correo de contacto no es válido' })
+  @MaxLength(160)
+  contactEmail?: string;
+
+  @ApiPropertyOptional({ example: '+57 300 123 4567' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  contactPhone?: string;
+
+  @ApiPropertyOptional({ example: 'Bogotá' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  city?: string;
 }
 
 /** Ajustes operativos de envío (se guardan dentro de `features`). */
