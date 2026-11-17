@@ -15,7 +15,11 @@ import { CTX } from '../context/request-context';
 export interface JwtPayload {
   sub: string; // userId
   email: string;
-  type?: 'operator';
+  /**
+   * 'operator' = sesión de operador. 'mfa_pending' = pasó el enlace mágico pero
+   * aún le falta el código de 2FA: solo sirve para `POST /v1/auth/mfa/verify`.
+   */
+  type?: 'operator' | 'mfa_pending';
 }
 
 interface RequestWithUser extends Request {
@@ -53,10 +57,11 @@ export class AuthGuard implements CanActivate {
         email: string;
         type?: string;
       }>(token, { secret: this.config.get<string>('jwt.secret') });
-      // Defensa en profundidad: aunque los tokens de cliente se firman con un
-      // secreto distinto (la firma ya no validaría aquí), rechazamos cualquier
-      // token que no sea de operador en rutas de operador.
-      if (payload.type === 'customer') {
+      // Solo una sesión de operador abre rutas de operador. Con el mismo secreto
+      // se firman otros tokens (el paso pendiente de 2FA, el `state` de OAuth de
+      // MercadoPago) que no deben valer como sesión; todas las sesiones reales
+      // llevan `type: 'operator'`.
+      if (payload.type !== 'operator') {
         throw new UnauthorizedException('Tipo de token incorrecto');
       }
       req.user = { id: payload.sub, email: payload.email };

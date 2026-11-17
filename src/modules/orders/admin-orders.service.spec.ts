@@ -70,3 +70,60 @@ describe('AdminOrdersService.update — pago manual', () => {
     expect(settlement.settlePaidOrder).not.toHaveBeenCalled();
   });
 });
+
+/** Corregir la dirección: solo mientras el pedido no se ha despachado. */
+describe('AdminOrdersService.update — dirección de envío', () => {
+  let prisma: { order: { findFirst: jest.Mock; update: jest.Mock } };
+  let service: AdminOrdersService;
+  const address = {
+    recipientName: 'Ana Pérez',
+    line1: 'Carrera 7 # 72-41',
+    city: 'Bogotá',
+    country: 'CO',
+  };
+
+  beforeEach(() => {
+    prisma = {
+      order: {
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'o1' }),
+      },
+    };
+    service = new AdminOrdersService(
+      prisma as unknown as PrismaService,
+      {} as MailService,
+      { settlePaidOrder: jest.fn() } as unknown as OrderSettlementService,
+    );
+  });
+
+  it.each(['RECEIVED', 'PREPARING'])(
+    'en estado %s se guarda la dirección nueva',
+    async (status) => {
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'o1',
+        status,
+        paymentStatus: 'PENDING',
+      });
+      await service.update('t1', 'o1', { shippingAddress: address });
+      const call = prisma.order.update.mock.calls[0] as [
+        { data: Record<string, unknown> },
+      ];
+      expect(call[0].data.shippingAddress).toEqual(address);
+    },
+  );
+
+  it.each(['SHIPPED', 'DELIVERED', 'CANCELLED'])(
+    'en estado %s se rechaza: el paquete ya salió o el pedido terminó',
+    async (status) => {
+      prisma.order.findFirst.mockResolvedValue({
+        id: 'o1',
+        status,
+        paymentStatus: 'PAID',
+      });
+      await expect(
+        service.update('t1', 'o1', { shippingAddress: address }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    },
+  );
+});
