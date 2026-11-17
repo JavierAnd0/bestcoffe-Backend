@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
  *   blog · blog:<slug>  → blog
  *   brew-guides · brew-guide:<slug> → guías de preparación
  *   locations           → sedes físicas (/tiendas)
+ *   pages · page:<slug> → páginas editoriales (historia, impacto, sostenibilidad, mayoristas)
  *
  * El front recibe `{ tenantSlug, tags }` y solo invalida la caché de esa tienda.
  */

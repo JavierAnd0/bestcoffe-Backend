@@ -15,6 +15,7 @@ import { AdminBlogController } from '../../modules/blog/admin-blog.controller';
 import { AdminBrewGuidesController } from '../../modules/discovery/admin-brew-guides.controller';
 import { AdminLocationsController } from '../../modules/discovery/admin-locations.controller';
 import { AdminContentController } from '../../modules/content/admin-content.controller';
+import { AdminPagesController } from '../../modules/content/admin-pages.controller';
 import { ProductsController } from '../../modules/products/products.controller';
 import { CollectionsController } from '../../modules/collections/collections.controller';
 import { AdminCollectionsController } from '../../modules/collections/admin-collections.controller';
@@ -154,6 +155,7 @@ describe('Protección por feature en los controladores', () => {
     [AdminBrewGuidesController],
     [AdminLocationsController],
     [AdminContentController],
+    [AdminPagesController],
   ] as const)('%p no exige feature (incluido en todos los planes)', (ctrl) => {
     expect(featureOf(ctrl)).toBeUndefined();
   });

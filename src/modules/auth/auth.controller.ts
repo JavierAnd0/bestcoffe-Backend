@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Post,
   Req,
@@ -49,11 +50,19 @@ export class AuthController {
     return this.auth.verifyMagicLink(dto.email, dto.token);
   }
 
+  /**
+   * Operador de la sesión. Si llega `X-Tenant-Slug`, incluye `tenantRole`: su
+   * rol en esa tienda (null si no es miembro). El panel lo usa para mostrar u
+   * ocultar lo que es solo del dueño; la API sigue exigiendo el rol en cada ruta.
+   */
   @Get('me')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  me(@CurrentUser() user: CurrentUserData) {
-    return this.auth.getMe(user);
+  me(
+    @CurrentUser() user: CurrentUserData,
+    @Headers('x-tenant-slug') tenantSlug?: string,
+  ) {
+    return this.auth.getMe(user, tenantSlug);
   }
 
   /** Paso 3, solo con 2FA activo: código de la app (o de respaldo) → sesión. */

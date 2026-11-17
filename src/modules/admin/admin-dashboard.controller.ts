@@ -12,7 +12,8 @@ import { AdminDashboardService } from './admin-dashboard.service';
 @ApiBearerAuth()
 @Controller('v1/admin/dashboard')
 @UseGuards(AuthGuard, TenantGuard, RolesGuard)
-@Roles('TENANT_OWNER', 'TENANT_EDITOR')
+// Inicio del panel: lo ven todos los roles de la tienda.
+@Roles('TENANT_OWNER', 'TENANT_EDITOR', 'TENANT_ORDERS')
 export class AdminDashboardController {
   constructor(private readonly dashboard: AdminDashboardService) {}
 

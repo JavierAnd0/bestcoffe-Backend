@@ -463,6 +463,7 @@ describe('Aislamiento entre tiendas (e2e)', () => {
       ['blog', '/v1/admin/blog'],
       ['guías', '/v1/admin/brew-guides'],
       ['sedes', '/v1/admin/locations'],
+      ['páginas', '/v1/admin/pages'],
     ])('el operador de A no entra a %s de B', async (_name, path) => {
       await request(http)
         .get(path)
@@ -546,6 +547,52 @@ describe('Aislamiento entre tiendas (e2e)', () => {
         .expect(200);
       expect(bodyText(res)).toContain(a.locationId);
       expect(bodyText(res)).not.toContain(b.locationId);
+    });
+
+    it('las páginas editoriales de A no tocan ni se ven en B', async () => {
+      const page = {
+        title: 'Historia privada a',
+        sections: [{ body: 'texto de a' }],
+      };
+      await request(http)
+        .put('/v1/admin/pages/historia')
+        .set(auth(a.operatorToken))
+        .set(asTenant(slugA))
+        .send({ content: page, active: true })
+        .expect(200);
+      // A no puede escribir la página de B declarando la tienda B.
+      await request(http)
+        .put('/v1/admin/pages/historia')
+        .set(auth(a.operatorToken))
+        .set(asTenant(slugB))
+        .send({ content: page, active: true })
+        .expect(403);
+
+      const own = await request(http)
+        .get('/v1/content/pages/historia')
+        .set(asTenant(slugA))
+        .expect(200);
+      expect(bodyText(own)).toContain('Historia privada a');
+      await request(http)
+        .get('/v1/content/pages/historia')
+        .set(asTenant(slugB))
+        .expect(404);
+
+      const profileB = await request(http)
+        .get('/v1/tenants/current')
+        .set(asTenant(slugB))
+        .expect(200);
+      expect(bodyText(profileB)).not.toContain('Historia privada a');
+      const profileA = await request(http)
+        .get('/v1/tenants/current')
+        .set(asTenant(slugA))
+        .expect(200);
+      // El perfil público no lleva el texto, solo la bandera efectiva.
+      expect(bodyText(profileA)).not.toContain('Historia privada a');
+      expect(
+        (profileA.body as { branding: { pages: Record<string, boolean> } })
+          .branding.pages.historia,
+      ).toBe(true);
     });
 
     it('el pedido de invitado exige el secreto interno', async () => {

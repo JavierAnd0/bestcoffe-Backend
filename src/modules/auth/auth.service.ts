@@ -157,12 +157,21 @@ export class AuthService {
 
   // Nota: getMe y verifyMagicLink usan signToken; este firma con SESSION_TTL.
 
-  getMe(user: CurrentUserData) {
+  async getMe(user: CurrentUserData, tenantSlug?: string) {
     const ownerEmail = this.config.get<string>('platformOwnerEmail');
-    return {
+    const me = {
       ...user,
       isPlatformOwner: !!ownerEmail && user.email === ownerEmail,
     };
+    const slug = tenantSlug?.trim();
+    if (!slug) return me;
+
+    // Rol en la tienda pedida (aislado por tienda: solo su propia membresía).
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { userId: user.id, tenant: { slug } },
+      select: { role: true },
+    });
+    return { ...me, tenantRole: membership?.role ?? null };
   }
 
   signToken(payload: JwtPayload): Promise<string> {
