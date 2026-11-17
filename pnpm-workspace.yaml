@@ -1,0 +1,13 @@
+allowBuilds:
+  '@parcel/watcher': false
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  protobufjs: true
+
+# Versiones mínimas para dependencias que llegan a través de otros paquetes y
+# que Dependabot no puede subir solo (su paquete padre fija una versión vieja).
+overrides:
+  zod@>=4.0.0 <4.6.6: ^4.6.6
+  glob@>=9.0.0 <14.0.2: ^14.0.2
+  minimatch@>=7.0.0 <11.0.1: ^11.0.1
