@@ -14,6 +14,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditInterceptor } from '../../common/interceptors/audit.interceptor';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -25,7 +27,8 @@ import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 @ApiTags('admin/subscriptions')
 @ApiBearerAuth()
 @Controller('v1/admin/subscriptions')
-@UseGuards(AuthGuard, TenantGuard, RolesGuard)
+@UseGuards(AuthGuard, TenantGuard, RolesGuard, FeatureGuard)
+@RequireFeature('subscriptions')
 @Roles('TENANT_ORDERS')
 @UseInterceptors(AuditInterceptor)
 export class AdminSubscriptionsController {

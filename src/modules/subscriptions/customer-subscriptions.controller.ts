@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -11,7 +12,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CustomerAuthGuard } from '../../common/guards/customer-auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
@@ -31,6 +32,15 @@ class ListMySubsDto {
   @Min(1)
   @Max(50)
   limit?: number = 20;
+}
+
+/** El cliente solo puede cambiar la frecuencia (el descuento lo fija la tienda). */
+class UpdateMySubDto {
+  @ApiProperty({ minimum: 7, maximum: 365 })
+  @IsInt()
+  @Min(7)
+  @Max(365)
+  frequencyDays!: number;
 }
 
 @ApiTags('subscriptions')
@@ -63,6 +73,15 @@ export class CustomerSubscriptionsController {
     @Body() dto: CreateSubscriptionDto,
   ) {
     return this.subs.create(customer.id, customer.tenantId, dto);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentCustomer() customer: CurrentCustomerData,
+    @Param('id') id: string,
+    @Body() dto: UpdateMySubDto,
+  ) {
+    return this.subs.updateFrequency(customer.id, id, dto.frequencyDays);
   }
 
   @Post(':id/pause')

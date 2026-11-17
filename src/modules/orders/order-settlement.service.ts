@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { inngest } from '../inngest/inngest.client';
+import {
+  activateFirstOrderSubscriptions,
+  cancelFirstOrderSubscriptions,
+} from '../subscriptions/subscription-first-order';
 
 export type PaymentSettlementEvent =
   | {
@@ -104,6 +108,10 @@ export class OrderSettlementService {
         });
       }
 
+      // Primer pedido de una suscripción: al pagarse, la suscripción se activa
+      // (no hace nada en pedidos normales ni en renovaciones).
+      await activateFirstOrderSubscriptions(tx, order);
+
       return true;
     });
 
@@ -155,6 +163,10 @@ export class OrderSettlementService {
           });
         }
       }
+
+      // Primer pedido de suscripción cancelado sin pagar: la suscripción que
+      // esperaba su pago se cancela también.
+      if (fullOrder) await cancelFirstOrderSubscriptions(tx, fullOrder);
 
       return tx.order.update({
         where: { id: orderId },

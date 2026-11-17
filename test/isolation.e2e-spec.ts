@@ -31,6 +31,10 @@ describe('Aislamiento entre tiendas (e2e)', () => {
     variantId: string;
     collectionSlug: string;
     blogSlug: string;
+    blogId: string;
+    guideId: string;
+    guideSlug: string;
+    locationId: string;
     discountCode: string;
     customerId: string;
     customerToken: string;
@@ -86,6 +90,22 @@ describe('Aislamiento entre tiendas (e2e)', () => {
         title: `Artículo privado ${label}`,
         body: 'contenido',
         publishedAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const guide = await prisma.brewGuide.create({
+      data: {
+        tenantId: tenant.id,
+        slug: `guia-${label}`,
+        title: `Guía privada ${label}`,
+        body: 'pasos',
+      },
+    });
+    const location = await prisma.storeLocation.create({
+      data: {
+        tenantId: tenant.id,
+        name: `Sede privada ${label}`,
+        address: `Calle ${label}`,
+        city: 'Bogotá',
       },
     });
     const discount = await prisma.discountCode.create({
@@ -152,6 +172,10 @@ describe('Aislamiento entre tiendas (e2e)', () => {
       variantId: product.variants[0].id,
       collectionSlug: collection.slug,
       blogSlug: post.slug,
+      blogId: post.id,
+      guideId: guide.id,
+      guideSlug: guide.slug,
+      locationId: location.id,
       discountCode: discount.code,
       customerId: customer.id,
       customerToken,
@@ -436,6 +460,9 @@ describe('Aislamiento entre tiendas (e2e)', () => {
       ['clientes', '/v1/admin/customers'],
       ['cupones', '/v1/admin/discount-codes'],
       ['ajustes', '/v1/admin/settings'],
+      ['blog', '/v1/admin/blog'],
+      ['guías', '/v1/admin/brew-guides'],
+      ['sedes', '/v1/admin/locations'],
     ])('el operador de A no entra a %s de B', async (_name, path) => {
       await request(http)
         .get(path)
@@ -461,6 +488,64 @@ describe('Aislamiento entre tiendas (e2e)', () => {
         select: { internalNotes: true },
       });
       expect(untouched?.internalNotes).toBeNull();
+    });
+
+    it('el panel de contenido de A solo lista lo de A', async () => {
+      for (const [path, own, other] of [
+        ['/v1/admin/blog', a.blogId, b.blogId],
+        ['/v1/admin/brew-guides', a.guideId, b.guideId],
+        ['/v1/admin/locations', a.locationId, b.locationId],
+      ]) {
+        const res = await request(http)
+          .get(path)
+          .set(auth(a.operatorToken))
+          .set(asTenant(slugA))
+          .expect(200);
+        expect(bodyText(res)).toContain(own);
+        expect(bodyText(res)).not.toContain(other);
+      }
+    });
+
+    it.each([
+      ['un artículo', '/v1/admin/blog', 'blogId', { title: 'intruso' }],
+      ['una guía', '/v1/admin/brew-guides', 'guideId', { title: 'intruso' }],
+      ['una sede', '/v1/admin/locations', 'locationId', { name: 'intruso' }],
+    ] as const)(
+      'el operador de A no puede leer, editar ni borrar %s de B por id',
+      async (_name, base, key, body) => {
+        const id = b[key];
+        for (const req of [
+          request(http).get(`${base}/${id}`),
+          request(http).patch(`${base}/${id}`).send(body),
+          request(http).delete(`${base}/${id}`),
+        ]) {
+          await req.set(auth(a.operatorToken)).set(asTenant(slugA)).expect(404);
+        }
+      },
+    );
+
+    it('el contenido de B sigue intacto tras los intentos de A', async () => {
+      const [post, guide, location] = await Promise.all([
+        prisma.blogPost.findUnique({ where: { id: b.blogId } }),
+        prisma.brewGuide.findUnique({ where: { id: b.guideId } }),
+        prisma.storeLocation.findUnique({ where: { id: b.locationId } }),
+      ]);
+      expect(post?.title).toBe('Artículo privado b');
+      expect(guide?.title).toBe('Guía privada b');
+      expect(location?.name).toBe('Sede privada b');
+    });
+
+    it('la guía y la sede de B no se ven en la tienda pública de A', async () => {
+      await request(http)
+        .get(`/v1/brew-guides/${b.guideSlug}`)
+        .set(asTenant(slugA))
+        .expect(404);
+      const res = await request(http)
+        .get('/v1/locations')
+        .set(asTenant(slugA))
+        .expect(200);
+      expect(bodyText(res)).toContain(a.locationId);
+      expect(bodyText(res)).not.toContain(b.locationId);
     });
 
     it('el pedido de invitado exige el secreto interno', async () => {

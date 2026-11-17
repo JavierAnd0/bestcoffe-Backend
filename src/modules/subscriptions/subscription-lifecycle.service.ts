@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isAwaitingFirstPayment } from './subscription-first-order';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,6 +32,7 @@ export class SubscriptionLifecycleService {
   ): Promise<Prisma.SubscriptionGetPayload<{ select: TSelect }>> {
     const sub = await this.ensure(scope);
     this.assertNotCancelled(sub.status);
+    this.assertNotAwaitingFirstPayment(sub);
     if (sub.status === SubStatus.PAUSED) {
       throw new BadRequestException('La suscripción ya está pausada');
     }
@@ -64,13 +66,19 @@ export class SubscriptionLifecycleService {
     });
   }
 
-  /** Salta el próximo envío de una suscripción activa adelantando `nextShipAt` una frecuencia. */
+  /**
+   * Salta el próximo envío adelantando `nextShipAt` una frecuencia. Se puede
+   * saltar otra vez estando en SKIPPED_NEXT; la renovación la devuelve a ACTIVE.
+   */
   async skipNext<TSelect extends Prisma.SubscriptionSelect>(
     scope: SubscriptionScope,
     select: TSelect,
   ): Promise<Prisma.SubscriptionGetPayload<{ select: TSelect }>> {
     const sub = await this.ensure(scope);
-    if (sub.status !== SubStatus.ACTIVE) {
+    if (
+      sub.status !== SubStatus.ACTIVE &&
+      sub.status !== SubStatus.SKIPPED_NEXT
+    ) {
       throw new BadRequestException(
         'Solo se puede saltar el próximo envío de una suscripción activa',
       );
@@ -123,6 +131,21 @@ export class SubscriptionLifecycleService {
     });
   }
 
+  /**
+   * Una suscripción que espera el pago de su primer pedido solo se activa al
+   * liquidarse ese pago; pausarla (y luego reanudarla) sería activarla sin pagar.
+   */
+  private assertNotAwaitingFirstPayment(sub: {
+    status: SubStatus;
+    lastShippedAt: Date | null;
+  }) {
+    if (isAwaitingFirstPayment(sub)) {
+      throw new BadRequestException(
+        'La suscripción se activa cuando se confirme el pago de su primer pedido',
+      );
+    }
+  }
+
   private assertNotCancelled(status: SubStatus) {
     if (status === SubStatus.CANCELLED) {
       throw new BadRequestException(
@@ -139,6 +162,7 @@ export class SubscriptionLifecycleService {
         status: true,
         nextShipAt: true,
         frequencyDays: true,
+        lastShippedAt: true,
       },
     });
     if (!sub) throw new NotFoundException('Suscripción no encontrada');

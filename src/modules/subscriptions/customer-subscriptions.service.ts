@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, ProductStatus, SubAvail, SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -27,7 +28,17 @@ const SUB_SELECT = {
       grind: true,
       priceSubscription: true,
       priceOneTime: true,
-      product: { select: { slug: true, name: true } },
+      product: {
+        select: {
+          slug: true,
+          name: true,
+          images: {
+            select: { url: true, alt: true },
+            orderBy: { position: 'asc' },
+            take: 1,
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.SubscriptionSelect;
@@ -38,6 +49,7 @@ export class CustomerSubscriptionsService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeService,
     private readonly lifecycle: SubscriptionLifecycleService,
+    private readonly config: ConfigService,
   ) {}
 
   async list(customerId: string, cursor?: string, limit = 20) {
@@ -66,11 +78,23 @@ export class CustomerSubscriptionsService {
     return sub;
   }
 
+  /**
+   * Alta directa con método de pago guardado en Stripe (SetupIntent). Solo
+   * existe en el modo de pruebas de plataforma (`STRIPE_CHECKOUT_ENABLED=1`):
+   * sin él, Stripe cobraría en la cuenta de la plataforma y no en la de la
+   * tienda. El alta normal es el checkout (`POST /v1/orders` con
+   * `mode: SUBSCRIPTION`), que crea la suscripción junto a su primer pedido.
+   */
   async create(
     customerId: string,
     tenantId: string,
     dto: CreateSubscriptionDto,
   ) {
+    if (this.config.get<boolean>('stripe.checkoutEnabled') !== true) {
+      throw new NotFoundException(
+        'Las suscripciones se crean al hacer un pedido por suscripción en el checkout',
+      );
+    }
     const variant = await this.prisma.productVariant.findFirst({
       where: { id: dto.variantId, tenantId },
       select: {
@@ -142,6 +166,14 @@ export class CustomerSubscriptionsService {
     });
 
     return { subscriptionId: sub.id, clientSecret };
+  }
+
+  updateFrequency(customerId: string, id: string, frequencyDays: number) {
+    return this.lifecycle.updateTerms(
+      { id, customerId },
+      { frequencyDays },
+      SUB_SELECT,
+    );
   }
 
   pause(customerId: string, id: string) {

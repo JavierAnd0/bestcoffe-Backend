@@ -3,21 +3,29 @@ import {
   BadRequestException,
   ConflictException,
   HttpException,
+  HttpStatus,
   Injectable,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductStatus, SubAvail, SubStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
-import type {
-  CreateGuestOrderDto,
-  CreateOrderDto,
+import {
+  DEFAULT_SUBSCRIPTION_FREQUENCY_DAYS,
+  type CreateGuestOrderDto,
+  type CreateOrderDto,
 } from './dto/create-order.dto';
 import { PurchaseMode } from '../cart/dto/price-cart.dto';
+import {
+  AWAITING_FIRST_PAYMENT,
+  isAwaitingFirstPayment,
+} from '../subscriptions/subscription-first-order';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class CheckoutService {
@@ -88,6 +96,31 @@ export class CheckoutService {
       select: { paymentProvider: true, mpConnected: true },
     });
 
+    // Pedido por suscripción: exige cuenta, la capacidad del plan y que cada
+    // línea sea suscribible. Se valida antes de cotizar para no ofrecer el
+    // precio de suscripción sin una suscripción real detrás.
+    const isSubscription = dto.mode === PurchaseMode.SUBSCRIPTION;
+    if (isSubscription) {
+      if (opts.guest) {
+        throw new BadRequestException(
+          'Para suscribirte necesitas iniciar sesión o crear una cuenta',
+        );
+      }
+      const { subscriptions } = await this.features.get(tenantId);
+      if (!subscriptions) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.PAYMENT_REQUIRED,
+            error: 'Feature no disponible en tu plan',
+            message: 'Esta tienda no ofrece suscripciones.',
+            feature: 'subscriptions',
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+      await this.assertSubscribable(tenantId, dto);
+    }
+
     // 1. Precio autoritativo — valida variantes, stock, descuento, envío.
     const priced = await this.cart.price(
       tenantId,
@@ -129,11 +162,18 @@ export class CheckoutService {
         });
       }
 
-      return tx.order.create({
+      const subscriptionIds = isSubscription
+        ? await this.upsertPendingSubscriptions(tx, tenantId, customerId, dto)
+        : [];
+
+      const created = await tx.order.create({
         data: {
           tenantId,
           customerId,
           source: 'CHECKOUT',
+          // Enlaza el primer pedido con su suscripción (la primera, si hay
+          // varias líneas): al pagarse, la liquidación las activa.
+          subscriptionId: subscriptionIds[0],
           status: 'RECEIVED',
           paymentStatus: 'PENDING',
           shippingAddress:
@@ -160,6 +200,7 @@ export class CheckoutService {
           },
         },
       });
+      return { ...created, subscriptionIds };
     });
 
     const summary = {
@@ -167,6 +208,8 @@ export class CheckoutService {
       discountCents: priced.discountCents,
       shippingCents: priced.shippingCents,
       discount: priced.discount,
+      // Suscripciones creadas con este pedido (esperan su pago para activarse).
+      subscriptionIds: order.subscriptionIds,
     };
 
     // 3a. Tienda sin pagos en línea: el pedido queda recibido y pendiente de
@@ -175,6 +218,9 @@ export class CheckoutService {
     // También es manual si la tienda no usa MercadoPago y Stripe no está
     // habilitado: Stripe cobra en la cuenta de la plataforma, no en la suya.
     const { onlinePayments } = await this.features.get(tenantId);
+    // Una suscripción se cobra envío a envío como un pedido normal: con o sin
+    // pasarela, su activación llega por la liquidación del pago (webhook u
+    // operador), no por este método.
     const stripeAllowed =
       this.config.get<boolean>('stripe.checkoutEnabled') === true;
     // MercadoPago elegido pero sin cuenta conectada tampoco puede cobrar: el
@@ -292,6 +338,128 @@ export class CheckoutService {
         summary,
       };
     }
+  }
+
+  /**
+   * Cada línea de un pedido por suscripción debe ser un café suscribible, de
+   * una unidad (la suscripción envía una bolsa por ciclo: el esquema no guarda
+   * cantidad) y sin variantes repetidas.
+   */
+  private async assertSubscribable(tenantId: string, dto: CreateOrderDto) {
+    const ids = dto.items.map((i) => i.variantId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException(
+        'Cada café puede aparecer una sola vez en un pedido por suscripción',
+      );
+    }
+    if (dto.items.some((i) => i.quantity !== 1)) {
+      throw new BadRequestException(
+        'Cada suscripción envía una unidad por ciclo: deja la cantidad en 1',
+      );
+    }
+    const variants = await this.prisma.productVariant.findMany({
+      where: { tenantId, id: { in: ids } },
+      select: {
+        id: true,
+        product: {
+          select: {
+            name: true,
+            type: true,
+            status: true,
+            subscriptionAvailability: true,
+          },
+        },
+      },
+    });
+    for (const v of variants) {
+      if (
+        v.product.status !== ProductStatus.ACTIVE ||
+        v.product.type === 'ACCESSORY' ||
+        v.product.subscriptionAvailability === SubAvail.NO
+      ) {
+        throw new BadRequestException(
+          `"${v.product.name}" no está disponible por suscripción`,
+        );
+      }
+    }
+    // Las variantes que no existan las rechaza la cotización con su mensaje.
+  }
+
+  /**
+   * Crea (o reutiliza) la suscripción de cada línea, en la transacción del
+   * pedido. Nacen esperando el pago del primer pedido (ver
+   * subscription-first-order.ts).
+   *
+   * Regla "una suscripción por cliente y variante" (el índice único parcial
+   * solo cubre ACTIVE; aquí se extiende a todas las no canceladas):
+   *  - si ya hay una esperando su primer pago (pedido anterior sin pagar o con
+   *    pago rechazado), se reutiliza con la frecuencia y dirección nuevas;
+   *  - si ya hay una activa, pausada o con envíos, se rechaza con 409: se
+   *    administra desde la cuenta, no se duplica.
+   */
+  private async upsertPendingSubscriptions(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    customerId: string,
+    dto: CreateOrderDto,
+  ): Promise<string[]> {
+    const variantIds = dto.items.map((i) => i.variantId);
+    const existing = await tx.subscription.findMany({
+      where: {
+        tenantId,
+        customerId,
+        variantId: { in: variantIds },
+        status: { not: SubStatus.CANCELLED },
+      },
+      select: {
+        id: true,
+        variantId: true,
+        status: true,
+        lastShippedAt: true,
+        variant: { select: { product: { select: { name: true } } } },
+      },
+    });
+    const live = existing.find((s) => !isAwaitingFirstPayment(s));
+    if (live) {
+      throw new ConflictException(
+        `Ya tienes una suscripción a "${live.variant.product.name}". Adminístrala desde Mi cuenta → Suscripciones.`,
+      );
+    }
+
+    const shippingAddress =
+      dto.shippingAddress as unknown as Prisma.InputJsonValue;
+    const ids: string[] = [];
+    for (const item of dto.items) {
+      const frequencyDays =
+        item.frequencyDays ??
+        dto.frequencyDays ??
+        DEFAULT_SUBSCRIPTION_FREQUENCY_DAYS;
+      // Provisional: la fecha real se fija al activarse (pago + frecuencia).
+      const nextShipAt = new Date(Date.now() + frequencyDays * DAY_MS);
+      const pending = existing.find((s) => s.variantId === item.variantId);
+      if (pending) {
+        await tx.subscription.update({
+          where: { id: pending.id },
+          data: { frequencyDays, nextShipAt, shippingAddress },
+        });
+        ids.push(pending.id);
+      } else {
+        const sub = await tx.subscription.create({
+          data: {
+            tenantId,
+            customerId,
+            variantId: item.variantId,
+            frequencyDays,
+            nextShipAt,
+            shippingAddress,
+            ...AWAITING_FIRST_PAYMENT,
+          },
+          select: { id: true },
+        });
+        ids.push(sub.id);
+      }
+    }
+    return ids;
   }
 
   /**

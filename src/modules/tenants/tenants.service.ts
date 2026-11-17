@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { resolvePublicNewsletterConfig } from '../newsletter/newsletter-config';
+import { resolveShippingRule } from '../cart/shipping-rule';
 
 @Injectable()
 export class TenantsService {
@@ -51,6 +52,8 @@ export class TenantsService {
       // El storefront muestra el panel de interruptores solo en una tienda sandbox.
       demo: sandbox,
       newsletter,
+      // Regla de envío real (la misma que aplica el carrito).
+      shipping: resolveShippingRule(overrides),
     };
   }
 }

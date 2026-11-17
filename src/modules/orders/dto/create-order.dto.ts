@@ -7,6 +7,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -102,18 +103,51 @@ export class ShippingAddressDto {
   phone?: string;
 }
 
+/** Frecuencia por defecto de una suscripción creada en el checkout. */
+export const DEFAULT_SUBSCRIPTION_FREQUENCY_DAYS = 30;
+
+/**
+ * Línea del pedido. En un pedido por suscripción puede traer su propia
+ * frecuencia (cada línea es una suscripción); si no, usa la del pedido.
+ */
+export class OrderItemDto extends CartItemDto {
+  @ApiPropertyOptional({
+    minimum: 7,
+    maximum: 365,
+    description: 'Solo en modo SUBSCRIPTION: cada cuántos días se envía',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(7)
+  @Max(365)
+  frequencyDays?: number;
+}
+
 export class CreateOrderDto {
-  @ApiProperty({ type: [CartItemDto] })
+  @ApiProperty({ type: [OrderItemDto] })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CartItemDto)
-  items!: CartItemDto[];
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
 
   @ApiPropertyOptional({ enum: PurchaseMode, default: PurchaseMode.ONE_TIME })
   @IsOptional()
   @IsEnum(PurchaseMode)
   mode?: PurchaseMode = PurchaseMode.ONE_TIME;
+
+  @ApiPropertyOptional({
+    minimum: 7,
+    maximum: 365,
+    default: DEFAULT_SUBSCRIPTION_FREQUENCY_DAYS,
+    description:
+      'Solo en modo SUBSCRIPTION: frecuencia de envío en días (las líneas pueden fijar la suya)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(7)
+  @Max(365)
+  frequencyDays?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

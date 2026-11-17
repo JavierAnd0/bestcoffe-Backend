@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { parseBrewGuideBody } from './brew-guide-body';
+import { toBrewGuideView } from './admin-brew-guides.service';
 
 @Injectable()
 export class BrewGuidesService {
@@ -19,10 +21,17 @@ export class BrewGuidesService {
         method: true,
         coverUrl: true,
         createdAt: true,
+        body: true,
       },
     });
     const hasMore = items.length > limit;
-    const page = hasMore ? items.slice(0, limit) : items;
+    const page = (hasMore ? items.slice(0, limit) : items).map(
+      ({ body, ...g }) => {
+        // El listado lleva lo necesario para la tarjeta, sin los pasos.
+        const { summary, totalTime, difficulty } = parseBrewGuideBody(body);
+        return { ...g, summary, totalTime, difficulty };
+      },
+    );
     return {
       items: page,
       nextCursor: hasMore ? page[page.length - 1].id : null,
@@ -35,6 +44,6 @@ export class BrewGuidesService {
     });
     if (!guide)
       throw new NotFoundException(`Brew guide "${slug}" no encontrado`);
-    return guide;
+    return toBrewGuideView(guide);
   }
 }
