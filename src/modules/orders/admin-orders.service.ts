@@ -173,6 +173,17 @@ export class AdminOrdersService {
     // Marcar un pedido como pagado a mano (transferencia / contra entrega) pasa
     // por la misma liquidación que un pago de pasarela: descuenta inventario,
     // cuenta el cupón y envía la confirmación. Es idempotente.
+    // La dirección solo se corrige antes de despachar: después ya va en camino
+    // (o se entregó o canceló) y cambiarla en el sistema no cambia el paquete.
+    if (
+      dto.shippingAddress !== undefined &&
+      current.status !== 'RECEIVED' &&
+      current.status !== 'PREPARING'
+    ) {
+      throw new BadRequestException(
+        'La dirección solo se puede cambiar antes del despacho',
+      );
+    }
     const manualPaid = dto.paymentStatus === 'PAID';
     if (manualPaid) {
       // Un pedido cancelado ya devolvió su stock y uno reembolsado ya lo
@@ -199,6 +210,10 @@ export class AdminOrdersService {
         ...(dto.trackingUrl !== undefined && { trackingUrl: dto.trackingUrl }),
         ...(dto.internalNotes !== undefined && {
           internalNotes: dto.internalNotes,
+        }),
+        ...(dto.shippingAddress !== undefined && {
+          shippingAddress:
+            dto.shippingAddress as unknown as Prisma.InputJsonValue,
         }),
       },
       include: ORDER_DETAIL_INCLUDE,

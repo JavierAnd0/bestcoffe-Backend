@@ -45,6 +45,16 @@ export class AdminProductsController {
     return this.products.list(tenant.id, status, cursor);
   }
 
+  /**
+   * Tienda sobre la que este operador puede subir o borrar archivos. El front
+   * lo usa antes de tocar Vercel Blob (que no pasa por el backend) para que un
+   * operador nunca opere sobre archivos de otra tienda. Va antes de `:id`.
+   */
+  @Get('storage-access')
+  storageAccess(@CurrentTenant() tenant: CurrentTenantData) {
+    return { tenantSlug: tenant.slug };
+  }
+
   @Get(':id')
   findOne(@CurrentTenant() tenant: CurrentTenantData, @Param('id') id: string) {
     return this.products.findOne(tenant.id, id);
