@@ -472,6 +472,8 @@ model Order {
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
+  // Analítica: ventas pagadas por rango de fechas.
+  @@index([tenantId, paymentStatus, createdAt])
   @@index([customerId])
 }
 

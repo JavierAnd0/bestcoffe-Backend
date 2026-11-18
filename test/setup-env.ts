@@ -31,3 +31,5 @@ process.env.STRIPE_SECRET_KEY = '';
 process.env.RESEND_API_KEY = '';
 process.env.TURNSTILE_SECRET_KEY = '';
 process.env.INNGEST_DEV = '1';
+// Dueño de la plataforma para las pruebas de los endpoints /v1/platform/*.
+process.env.PLATFORM_OWNER_EMAIL = 'owner@plataforma.example.com';
