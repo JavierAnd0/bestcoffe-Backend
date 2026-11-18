@@ -1,4 +1,8 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
@@ -164,8 +168,23 @@ describe('2FA de operadores', () => {
       { expiresIn: '5m' },
     );
     const res = await auth.verifyMfa(mfaToken, codeFor(secret));
-    const payload = await jwt.verifyAsync<{ type: string }>(res.accessToken);
+    const payload = await jwt.verifyAsync<{ type: string; mfa?: boolean }>(
+      res.accessToken,
+    );
     expect(payload.type).toBe('operator');
+    // Marca de sesión abierta con 2FA: la exige la cuenta de la plataforma.
+    expect(payload.mfa).toBe(true);
+  });
+
+  it('sin 2FA el enlace mágico entrega una sesión SIN la marca mfa', async () => {
+    user.loginToken = (
+      auth as unknown as { hashToken(t: string): string }
+    ).hashToken('raw');
+    const res = (await auth.verifyMagicLink(user.email, 'raw')) as {
+      accessToken: string;
+    };
+    const payload = await jwt.verifyAsync<{ mfa?: boolean }>(res.accessToken);
+    expect(payload.mfa).toBeUndefined();
   });
 
   it('código inválido o token que no es de paso pendiente → 401', async () => {
@@ -238,6 +257,57 @@ describe('AuthGuard · solo sesiones de operador', () => {
     const t = await jwt.signAsync(payload);
     await expect(guard.canActivate(ctx(t))).rejects.toBeInstanceOf(
       UnauthorizedException,
+    );
+  });
+});
+
+describe('AuthGuard · cuenta de la plataforma exige 2FA', () => {
+  const OWNER = 'root@plataforma.co';
+  const jwt = new JwtService({ secret: SECRET });
+  const guard = new AuthGuard(
+    jwt,
+    {
+      get: (k: string) => (k === 'platformOwnerEmail' ? OWNER : SECRET),
+    } as unknown as ConfigService,
+    { getAllAndOverride: () => false } as unknown as Reflector,
+    { set: jest.fn() } as unknown as ClsService,
+  );
+  const ctx = (token: string, url: string) =>
+    ({
+      getHandler: () => null,
+      getClass: () => null,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: { authorization: `Bearer ${token}` },
+          originalUrl: url,
+        }),
+      }),
+    }) as unknown as ExecutionContext;
+  const session = (email: string, mfa?: boolean) =>
+    jwt.signAsync({ sub: 'u1', email, type: 'operator', ...(mfa && { mfa }) });
+
+  it('sin 2FA solo abre /v1/auth/* (ver su cuenta y activarlo)', async () => {
+    const t = await session(OWNER);
+    await expect(guard.canActivate(ctx(t, '/v1/auth/me'))).resolves.toBe(true);
+    await expect(guard.canActivate(ctx(t, '/v1/auth/mfa/setup'))).resolves.toBe(
+      true,
+    );
+    await expect(
+      guard.canActivate(ctx(t, '/v1/admin/orders?x=1')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('con sesión abierta con 2FA opera normal', async () => {
+    const t = await session(OWNER, true);
+    await expect(guard.canActivate(ctx(t, '/v1/admin/orders'))).resolves.toBe(
+      true,
+    );
+  });
+
+  it('a los operadores de tienda no se les exige', async () => {
+    const t = await session('dueno@demo.test');
+    await expect(guard.canActivate(ctx(t, '/v1/admin/orders'))).resolves.toBe(
+      true,
     );
   });
 });

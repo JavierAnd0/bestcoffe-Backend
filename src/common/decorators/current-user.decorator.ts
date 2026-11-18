@@ -6,6 +6,8 @@ export interface CurrentUserData {
   id: string;
   email: string;
   role?: OperatorRole;
+  /** La sesión se abrió con el código de 2FA. */
+  mfa?: boolean;
 }
 
 interface RequestWithUser extends Request {

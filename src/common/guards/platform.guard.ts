@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MFA_REQUIRED } from './auth.guard';
 
 /**
  * Guard exclusivo para endpoints /v1/platform/*.
@@ -19,6 +20,8 @@ import { PrismaService } from '../../prisma/prisma.service';
  *  3. Comprueba que el email coincida con PLATFORM_OWNER_EMAIL.
  *  4. Verifica que el `sub` resuelva a un User real cuyo email sea el del
  *     owner — no se autoriza solo por un claim de email en el token.
+ *  5. Exige una sesión abierta con 2FA (`mfa: true`): para esta cuenta la
+ *     verificación en dos pasos es obligatoria.
  *
  * No requiere TenantGuard — el platform es cross-tenant.
  */
@@ -39,7 +42,7 @@ export class PlatformGuard implements CanActivate {
     const token = this.extractToken(req);
     if (!token) throw new UnauthorizedException('Falta token de autenticación');
 
-    let payload: { sub: string; email: string; type?: string };
+    let payload: { sub: string; email: string; type?: string; mfa?: boolean };
     try {
       payload = await this.jwt.verifyAsync(token, {
         secret: this.config.get<string>('jwt.secret'),
@@ -48,7 +51,10 @@ export class PlatformGuard implements CanActivate {
       throw new UnauthorizedException('Token inválido o expirado');
     }
 
-    if (payload.type === 'customer') {
+    // Solo una sesión de operador completa. Con el mismo secreto se firman
+    // otros tokens (el paso pendiente de 2FA, el `state` de MercadoPago) que
+    // no deben valer aquí: aceptar `mfa_pending` saltaría el segundo factor.
+    if (payload.type !== 'operator') {
       throw new ForbiddenException('Tipo de token incorrecto');
     }
 
@@ -69,6 +75,15 @@ export class PlatformGuard implements CanActivate {
       throw new ForbiddenException(
         'Acceso restringido al propietario de la plataforma',
       );
+    }
+
+    if (payload.mfa !== true) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: MFA_REQUIRED,
+        message:
+          'La cuenta de la plataforma necesita la verificación en dos pasos.',
+      });
     }
 
     req.user = { id: user.id, email: user.email };
