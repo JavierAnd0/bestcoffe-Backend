@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -203,6 +204,30 @@ export class AdminProductsService {
       include: { product: { select: { slug: true } } },
     });
     if (!variant) throw new NotFoundException('Variante no encontrada');
+
+    // Las suscripciones y los regalos apuntan a la variante (sin borrado en
+    // cascada, para no perder historial): se explica en vez de fallar en la base.
+    const [liveSubs, pastSubs, gifts] = await Promise.all([
+      this.prisma.subscription.count({
+        where: { variantId, tenantId, status: { not: 'CANCELLED' } },
+      }),
+      this.prisma.subscription.count({
+        where: { variantId, tenantId, status: 'CANCELLED' },
+      }),
+      this.prisma.giftSubscription.count({ where: { variantId, tenantId } }),
+    ]);
+    if (liveSubs > 0) {
+      throw new ConflictException(
+        `Tiene ${liveSubs} suscripción(es) vigente(s). Cancélalas antes de eliminarla, ` +
+          'o deja su stock en 0 para que no se pueda comprar.',
+      );
+    }
+    if (pastSubs > 0 || gifts > 0) {
+      throw new ConflictException(
+        'Tiene historial de suscripciones o regalos y no se puede eliminar. ' +
+          'Deja su stock en 0 y quita su precio de suscripción para que no se pueda comprar.',
+      );
+    }
 
     await this.prisma.productVariant.delete({ where: { id: variantId } });
     this.revalidation.dispatch(tenantSlug, [`product:${variant.product.slug}`]);

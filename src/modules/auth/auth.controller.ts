@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -97,8 +98,13 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  mfaEnable(@CurrentUser() user: CurrentUserData, @Body() dto: MfaCodeDto) {
-    return this.mfa.confirmSetup(user.id, dto.code);
+  async mfaEnable(
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: MfaCodeDto,
+  ) {
+    const result = await this.mfa.confirmSetup(user.id, dto.code);
+    const accessToken = await this.auth.sessionAfterMfaSetup(user);
+    return { ...result, accessToken };
   }
 
   @Post('mfa/disable')
@@ -107,6 +113,11 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   mfaDisable(@CurrentUser() user: CurrentUserData, @Body() dto: MfaCodeDto) {
+    if (this.auth.isPlatformOwner(user.email)) {
+      throw new BadRequestException(
+        'La verificación en dos pasos es obligatoria para la cuenta de la plataforma.',
+      );
+    }
     return this.mfa.disable(user.id, dto.code);
   }
 

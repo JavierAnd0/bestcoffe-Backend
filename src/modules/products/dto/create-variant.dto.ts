@@ -17,11 +17,15 @@ export class CreateVariantDto {
   @Min(0)
   priceOneTime!: number;
 
-  @ApiPropertyOptional({ description: 'Precio suscripción (centavos COP)' })
+  @ApiPropertyOptional({
+    description:
+      'Precio suscripción (centavos COP). `null` lo quita: no se aceptan suscripciones nuevas; las existentes conservan su precio.',
+    nullable: true,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
-  priceSubscription?: number;
+  priceSubscription?: number | null;
 
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()
