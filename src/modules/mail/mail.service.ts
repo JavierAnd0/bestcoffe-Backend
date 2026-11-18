@@ -350,7 +350,7 @@ export class MailService {
     await this.send({
       to: opts.to,
       subject: c.subject,
-      fallbackLog: `Subscription ${opts.change} for ${opts.to} (${opts.storeName})`,
+      fallbackLog: `Subscription ${opts.change} (${opts.storeName})`,
       html: `
         <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
           <h2>${c.title}</h2>
