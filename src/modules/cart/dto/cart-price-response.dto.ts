@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { GrindFormat } from '@prisma/client';
+import { GrindFormat, ProductType } from '@prisma/client';
 
 export class CartLineDto {
   @ApiProperty() variantId!: string;
@@ -7,6 +7,7 @@ export class CartLineDto {
   @ApiProperty() productName!: string;
   @ApiProperty() sizeGrams!: number;
   @ApiProperty({ enum: GrindFormat }) grind!: GrindFormat;
+  @ApiProperty({ enum: ProductType }) productType!: ProductType;
   @ApiProperty({ description: 'Precio unitario en centavos COP' })
   unitCents!: number;
   @ApiProperty() quantity!: number;

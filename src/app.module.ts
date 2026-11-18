@@ -40,6 +40,7 @@ import { PlatformModule } from './modules/platform/platform.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MailModule } from './modules/mail/mail.module';
+import { LOG_REDACT } from './common/logging/redact';
 
 @Module({
   imports: [
@@ -77,7 +78,8 @@ import { MailModule } from './modules/mail/mail.module';
             ? { target: 'pino-pretty', options: { singleLine: true } }
             : undefined,
         autoLogging: true,
-        redact: ['req.headers.authorization'],
+        // Sesiones y secretos internos fuera de los registros (ver redact.ts).
+        redact: LOG_REDACT,
       },
     }),
     PrismaModule,

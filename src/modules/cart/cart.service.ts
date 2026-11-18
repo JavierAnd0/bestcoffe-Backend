@@ -54,7 +54,12 @@ export class CartService {
         priceSubscription: true,
         stock: true,
         product: {
-          select: { slug: true, name: true, subscriptionAvailability: true },
+          select: {
+            slug: true,
+            name: true,
+            type: true,
+            subscriptionAvailability: true,
+          },
         },
       },
     });
@@ -96,6 +101,7 @@ export class CartService {
         productName: v.product.name,
         sizeGrams: v.sizeGrams,
         grind: v.grind,
+        productType: v.product.type,
         unitCents,
         quantity: item.quantity,
         lineCents,

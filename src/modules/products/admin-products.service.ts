@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   HttpStatus,
@@ -242,6 +243,7 @@ export class AdminProductsService {
     productId: string,
     dto: AttachImageDto,
   ) {
+    assertOwnBlobImage(dto.url, tenantSlug);
     const product = await this.ensureProduct(tenantId, productId);
     const last = await this.prisma.productImage.aggregate({
       where: { productId },
@@ -365,5 +367,33 @@ export class AdminProductsService {
       slug = `${base}-${++n}`;
     }
     return slug;
+  }
+}
+
+/**
+ * Una imagen alojada en el Vercel Blob de la plataforma solo se acepta si está
+ * en la carpeta de esta tienda (`products/<slug>/`, donde sube el panel).
+ * Sin esto, una tienda podía adjuntar la URL de una imagen de otra y, al
+ * quitarla, el panel borraba el archivo ajeno. Las URLs externas (otro host)
+ * se siguen aceptando como antes.
+ */
+export function assertOwnBlobImage(url: string, tenantSlug: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return; // el DTO ya exige una URL válida
+  }
+  if (!parsed.hostname.endsWith('.blob.vercel-storage.com')) return;
+  let path: string;
+  try {
+    path = decodeURIComponent(parsed.pathname);
+  } catch {
+    throw new BadRequestException('La URL de la imagen no es válida');
+  }
+  if (path.includes('..') || !path.startsWith(`/products/${tenantSlug}/`)) {
+    throw new BadRequestException(
+      'La imagen debe subirse desde el panel de esta tienda',
+    );
   }
 }

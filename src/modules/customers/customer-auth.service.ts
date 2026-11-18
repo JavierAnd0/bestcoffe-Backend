@@ -261,20 +261,41 @@ export class CustomerAuthService {
   /**
    * Sincroniza o crea el cliente cuando inicia sesión mediante Neon Auth / Google OAuth.
    * Al venir validado por Neon Auth, el correo ya está verificado.
+   *
+   * Si ya existía una cuenta con ese correo que NUNCA se verificó, sus
+   * credenciales las puso alguien que no demostró ser dueño del correo (p. ej.
+   * un atacante que registró el correo de la víctima con su propia contraseña).
+   * Antes de marcarla verificada se borran: si no, esa contraseña quedaría
+   * válida para entrar a la cuenta que la víctima empieza a usar con Google.
+   * Una cuenta ya verificada conserva su contraseña (la puso su dueño).
    */
   async syncNeonCustomer(tenantId: string, dto: SyncNeonCustomerDto) {
-    const customer = await this.prisma.customer.upsert({
-      where: { tenantId_email: { tenantId, email: dto.email } },
-      update: {
-        emailVerified: true,
-        ...(dto.name && { name: dto.name }),
-      },
-      create: {
-        tenantId,
-        email: dto.email,
-        name: dto.name ?? null,
-        emailVerified: true,
-      },
+    const customer = await this.prisma.$transaction(async (tx) => {
+      await tx.customer.updateMany({
+        where: { tenantId, email: dto.email, emailVerified: false },
+        data: {
+          passwordHash: null,
+          emailVerifyToken: null,
+          emailVerifyExpiresAt: null,
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+          failedAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+      return tx.customer.upsert({
+        where: { tenantId_email: { tenantId, email: dto.email } },
+        update: {
+          emailVerified: true,
+          ...(dto.name && { name: dto.name }),
+        },
+        create: {
+          tenantId,
+          email: dto.email,
+          name: dto.name ?? null,
+          emailVerified: true,
+        },
+      });
     });
 
     const accessToken = await this.signToken(

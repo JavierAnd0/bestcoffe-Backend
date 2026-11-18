@@ -19,6 +19,7 @@ import { TenantFeaturesService } from '../../common/features/tenant-features.ser
 import type { FeatureFlags } from '../../common/features/tier-features';
 import { CartService } from '../cart/cart.service';
 import { PurchaseMode } from '../cart/dto/price-cart.dto';
+import { variantLabel } from '../orders/variant-label';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,6 +42,36 @@ type DueSubscription = {
     product: { name: string; subscriptionAvailability: SubAvail };
   };
 };
+
+/** Campos que necesita una renovación (debe coincidir con DueSubscription). */
+const DUE_SELECT = {
+  id: true,
+  tenantId: true,
+  customerId: true,
+  status: true,
+  frequencyDays: true,
+  discountPct: true,
+  nextShipAt: true,
+  shippingAddress: true,
+  customer: { select: { id: true, stripeCustomerId: true } },
+  tenant: { select: { paymentProvider: true } },
+  variant: {
+    select: {
+      id: true,
+      product: { select: { name: true, subscriptionAvailability: true } },
+    },
+  },
+} satisfies Prisma.SubscriptionSelect;
+
+/** Suscripciones por página del recorrido de una tienda. */
+const RENEWAL_PAGE_SIZE = 50;
+/**
+ * Máximo de suscripciones vencidas que se miran por tienda en una ejecución:
+ * una tienda con muchas filas atascadas no consume el tiempo de las demás.
+ */
+const RENEWALS_PER_TENANT_MAX = 500;
+/** Margen dentro del límite de la función (300 s en Vercel). */
+const RENEWAL_TIME_BUDGET_MS = 240_000;
 
 export type RenewalOutcome = 'MANUAL' | 'STRIPE' | 'SKIPPED';
 
@@ -73,69 +104,95 @@ export class SubscriptionRenewalService {
     errors: number;
   }> {
     const now = new Date();
+    const deadline = Date.now() + RENEWAL_TIME_BUDGET_MS;
+    const dueWhere: Prisma.SubscriptionWhereInput = {
+      // SKIPPED_NEXT ya tiene `nextShipAt` adelantado: al llegar esa fecha se
+      // renueva y vuelve a ACTIVE.
+      status: { in: [SubStatus.ACTIVE, SubStatus.SKIPPED_NEXT] },
+      nextShipAt: { lte: now },
+      // Una tienda suspendida por cobro no cobra renovaciones a sus clientes.
+      tenant: { billingStatus: { notIn: ['CANCELLED', 'INACTIVE'] } },
+    };
 
-    const dueSubscriptions = await this.prisma.subscription.findMany({
-      where: {
-        // SKIPPED_NEXT ya tiene `nextShipAt` adelantado: al llegar esa fecha se
-        // renueva y vuelve a ACTIVE.
-        status: { in: [SubStatus.ACTIVE, SubStatus.SKIPPED_NEXT] },
-        nextShipAt: { lte: now },
-        // Una tienda suspendida por cobro no cobra renovaciones a sus clientes.
-        tenant: { billingStatus: { notIn: ['CANCELLED', 'INACTIVE'] } },
-      },
-      select: {
-        id: true,
-        tenantId: true,
-        customerId: true,
-        status: true,
-        frequencyDays: true,
-        discountPct: true,
-        nextShipAt: true,
-        shippingAddress: true,
-        customer: { select: { id: true, stripeCustomerId: true } },
-        tenant: { select: { paymentProvider: true } },
-        variant: {
-          select: {
-            id: true,
-            product: {
-              select: { name: true, subscriptionAvailability: true },
-            },
-          },
-        },
-      },
-      orderBy: { nextShipAt: 'asc' },
-      take: 50,
+    // Se recorre tienda por tienda (la de la renovación más antigua primero) y,
+    // dentro de cada una, por cursor. Antes era un solo lote global de 50: las
+    // suscripciones que no se pueden renovar (sin stock, producto archivado,
+    // tienda sin suscripciones…) no avanzan `nextShipAt`, así que con 50 de
+    // ellas al frente ninguna otra tienda volvía a renovar. Ahora una fila
+    // atascada no bloquea a las siguientes, y una tienda con muchas solo se
+    // frena a sí misma (tope por tienda).
+    const tenants = await this.prisma.subscription.groupBy({
+      by: ['tenantId'],
+      where: dueWhere,
+      _min: { nextShipAt: true },
     });
+    tenants.sort(
+      (a, b) =>
+        (a._min.nextShipAt?.getTime() ?? 0) -
+        (b._min.nextShipAt?.getTime() ?? 0),
+    );
 
     let processed = 0;
     let skipped = 0;
     let errors = 0;
 
-    for (const sub of dueSubscriptions) {
-      try {
-        // Sin la capacidad `subscriptions` (plan o suspensión) no se renueva:
-        // la suscripción queda esperando, sin pedido ni marca de fallo.
-        const flags = await this.features.get(sub.tenantId);
-        if (!flags.subscriptions) continue;
-        const outcome = await this.renewSubscription(sub, flags);
-        if (outcome === 'SKIPPED') skipped++;
-        else processed++;
-      } catch (err: unknown) {
-        errors++;
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Error procesando renovación de suscripción ${sub.id}: ${message}`,
+    for (const { tenantId } of tenants) {
+      if (Date.now() > deadline) break;
+      // Sin la capacidad `subscriptions` (plan o suspensión) no se renueva:
+      // las suscripciones quedan esperando, sin pedido ni marca de fallo.
+      const flags = await this.features.get(tenantId);
+      if (!flags.subscriptions) continue;
+
+      let cursor: { nextShipAt: Date; id: string } | null = null;
+      let seen = 0;
+      while (seen < RENEWALS_PER_TENANT_MAX && Date.now() <= deadline) {
+        const page: DueSubscription[] = await this.prisma.subscription.findMany(
+          {
+            where: {
+              ...dueWhere,
+              tenantId,
+              ...(cursor && {
+                OR: [
+                  { nextShipAt: { gt: cursor.nextShipAt } },
+                  { nextShipAt: cursor.nextShipAt, id: { gt: cursor.id } },
+                ],
+              }),
+            },
+            select: DUE_SELECT,
+            orderBy: [{ nextShipAt: 'asc' }, { id: 'asc' }],
+            take: RENEWAL_PAGE_SIZE,
+          },
         );
-        // Solo un cobro rechazado es un fallo de pago. Un error de otro tipo
-        // (base de datos, red) se reintenta en la siguiente ejecución.
-        if (err instanceof OffSessionChargeError) {
-          await this.prisma.subscription
-            .update({
-              where: { id: sub.id },
-              data: { status: SubStatus.PAYMENT_FAILED },
-            })
-            .catch(() => undefined);
+        if (page.length === 0) break;
+
+        for (const sub of page) {
+          try {
+            const outcome = await this.renewSubscription(sub, flags);
+            if (outcome === 'SKIPPED') skipped++;
+            else processed++;
+          } catch (err: unknown) {
+            errors++;
+            const message = err instanceof Error ? err.message : String(err);
+            this.logger.error(
+              `Error procesando renovación de suscripción ${sub.id}: ${message}`,
+            );
+            // Solo un cobro rechazado es un fallo de pago. Un error de otro
+            // tipo (base de datos, red) se reintenta en la siguiente ejecución.
+            if (err instanceof OffSessionChargeError) {
+              await this.prisma.subscription
+                .update({
+                  where: { id: sub.id },
+                  data: { status: SubStatus.PAYMENT_FAILED },
+                })
+                .catch(() => undefined);
+            }
+          }
         }
+
+        seen += page.length;
+        const last = page[page.length - 1];
+        cursor = { nextShipAt: last.nextShipAt, id: last.id };
+        if (page.length < RENEWAL_PAGE_SIZE) break;
       }
     }
 
@@ -255,7 +312,7 @@ export class SubscriptionRenewalService {
                 tenantId: sub.tenantId,
                 variantId: line.variantId,
                 productName: line.productName,
-                variantName: `${line.sizeGrams}g · ${line.grind}`,
+                variantName: variantLabel(line),
                 grind: line.grind,
                 sizeGrams: line.sizeGrams,
                 unitCents: line.unitCents,

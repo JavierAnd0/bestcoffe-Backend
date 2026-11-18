@@ -4,14 +4,41 @@ import { ConfigService } from '@nestjs/config';
 export type SubscriptionChange =
   'paused' | 'resumed' | 'skipped' | 'cancelled' | 'frequency';
 
-/** Escapa texto que viene de la base (nombres) antes de meterlo en el HTML. */
-function escapeHtml(s: string): string {
+/**
+ * Escapa texto antes de meterlo en el HTML de un correo. Todo lo variable
+ * (nombres, productos, tienda, rol) pasa por aquí: un nombre lo puede escribir
+ * cualquiera al registrarse, y sin escapar permitía meter enlaces o esconder
+ * el contenido real del correo.
+ */
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+const esc = escapeHtml;
+
+/** "Hola <nombre>" con el nombre escapado (o solo "Hola"). */
+function greeting(name: string | null | undefined): string {
+  return name ? `Hola ${esc(name)}` : 'Hola';
+}
+
+/**
+ * Valor seguro para un href: solo http(s), escapado para el atributo. Una URL
+ * con otro esquema (javascript:, data:…) devuelve null y el enlace se omite.
+ */
+export function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return esc(u.toString());
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -71,16 +98,16 @@ export class MailService {
     name: string | null,
     link: string,
   ): Promise<void> {
-    const greeting = name ? `Hola ${name}` : 'Hola';
+    const hello = greeting(name);
     await this.send({
       to,
       subject: 'Tu enlace de acceso',
       fallbackLog: `Magic link for ${to}: ${link}`,
       html: `
-        <p>${greeting},</p>
+        <p>${hello},</p>
         <p>Haz clic en el siguiente enlace para acceder a tu panel.
            El enlace vence en 15 minutos y solo puede usarse una vez.</p>
-        <p><a href="${link}">Acceder al panel</a></p>
+        <p><a href="${safeHref(link) ?? '#'}">Acceder al panel</a></p>
         <p>Si no solicitaste este acceso, ignora este mensaje.</p>
       `,
     });
@@ -92,16 +119,16 @@ export class MailService {
     name: string | null | undefined,
     link: string,
   ): Promise<void> {
-    const greeting = name ? `Hola ${name}` : 'Hola';
+    const hello = greeting(name);
     await this.send({
       to,
       subject: 'Activa tu cuenta',
       fallbackLog: `Verify link for ${to}: ${link}`,
       html: `
-        <p>${greeting},</p>
+        <p>${hello},</p>
         <p>Haz clic en el siguiente enlace para verificar tu correo.
            El enlace vence en 24 horas.</p>
-        <p><a href="${link}">Verificar mi correo</a></p>
+        <p><a href="${safeHref(link) ?? '#'}">Verificar mi correo</a></p>
         <p>Si no creaste esta cuenta, ignora este mensaje.</p>
       `,
     });
@@ -113,17 +140,17 @@ export class MailService {
     name: string | null | undefined,
     link: string,
   ): Promise<void> {
-    const greeting = name ? `Hola ${name}` : 'Hola';
+    const hello = greeting(name);
     await this.send({
       to,
       subject: 'Restablece tu contraseña',
       fallbackLog: `Password reset link for ${to}: ${link}`,
       html: `
-        <p>${greeting},</p>
+        <p>${hello},</p>
         <p>Recibimos una solicitud para restablecer tu contraseña.
            Haz clic en el siguiente enlace para elegir una nueva clave.
            El enlace vence en 1 hora y solo puede usarse una vez.</p>
-        <p><a href="${link}">Restablecer mi contraseña</a></p>
+        <p><a href="${safeHref(link) ?? '#'}">Restablecer mi contraseña</a></p>
         <p>Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
       `,
     });
@@ -147,11 +174,11 @@ export class MailService {
       html: `
         <p>Hola,</p>
         <p>Proponemos ajustar la comisión por ventas de tu tienda
-           <strong>${storeName}</strong>:</p>
+           <strong>${esc(storeName)}</strong>:</p>
         <p style="font-size:18px"><strong>${oldPct}% → ${newPct}%</strong></p>
         <p>Este cambio <strong>no aplica</strong> hasta que lo apruebes. Entra a tu
            panel para revisarlo y aceptarlo o rechazarlo.</p>
-        <p><a href="${panelUrl}">Revisar en mi panel</a></p>
+        <p><a href="${safeHref(panelUrl) ?? '#'}">Revisar en mi panel</a></p>
         <p>Si no reconoces esta solicitud, ignórala: tu comisión actual seguirá vigente.</p>
       `,
     });
@@ -171,14 +198,14 @@ export class MailService {
       lineCents: number;
     }>;
   }): Promise<void> {
-    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const hello = greeting(opts.customerName);
     const itemsHtml = opts.items
       .map(
         (it) => `
         <tr>
           <td style="padding:8px; border-bottom:1px solid #eee;">
-            <strong>${it.productName}</strong><br/>
-            <small style="color:#666;">${it.variantName}</small>
+            <strong>${esc(it.productName)}</strong><br/>
+            <small style="color:#666;">${esc(it.variantName)}</small>
           </td>
           <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${it.quantity}</td>
           <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">$${(it.lineCents / 100).toLocaleString('es-CO')}</td>
@@ -195,7 +222,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
           <h2>¡Gracias por tu compra!</h2>
-          <p>${greeting}, hemos recibido tu pedido en <strong>${opts.storeName}</strong> y ya lo estamos preparando.</p>
+          <p>${hello}, hemos recibido tu pedido en <strong>${esc(opts.storeName)}</strong> y ya lo estamos preparando.</p>
           <p><strong>Número de pedido:</strong> #${opts.orderId.slice(-6).toUpperCase()}</p>
           
           <table style="width:100%; border-collapse:collapse; margin-top:20px; font-size:14px;">
@@ -233,10 +260,12 @@ export class MailService {
     storeName: string;
     trackingUrl?: string | null;
   }): Promise<void> {
-    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const hello = greeting(opts.customerName);
     const shortId = opts.orderId.slice(-6).toUpperCase();
-    const trackingBlock = opts.trackingUrl
-      ? `<p style="margin-top:16px;"><a href="${opts.trackingUrl}" style="display:inline-block; padding:10px 18px; background:#111; color:#fff; text-decoration:none; border-radius:4px;">Rastrear mi envío</a></p>`
+    // La URL de rastreo la escribe el personal de la tienda: solo http(s).
+    const trackingHref = safeHref(opts.trackingUrl);
+    const trackingBlock = trackingHref
+      ? `<p style="margin-top:16px;"><a href="${trackingHref}" style="display:inline-block; padding:10px 18px; background:#111; color:#fff; text-decoration:none; border-radius:4px;">Rastrear mi envío</a></p>`
       : `<p style="margin-top:16px;">Pronto recibirás tu paquete en la dirección indicada.</p>`;
 
     await this.send({
@@ -246,7 +275,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
           <h2>¡Tu café va en camino!</h2>
-          <p>${greeting}, tu pedido <strong>#${shortId}</strong> en <strong>${opts.storeName}</strong> ha sido despachado.</p>
+          <p>${hello}, tu pedido <strong>#${shortId}</strong> en <strong>${esc(opts.storeName)}</strong> ha sido despachado.</p>
           ${trackingBlock}
         </div>
       `,
@@ -265,7 +294,7 @@ export class MailService {
     productName: string;
     totalCents: number;
   }): Promise<void> {
-    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const hello = greeting(opts.customerName);
     const shortId = opts.orderId.slice(-6).toUpperCase();
     const total = `$${(opts.totalCents / 100).toLocaleString('es-CO')}`;
 
@@ -276,7 +305,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
           <h2>Tu próximo envío está listo</h2>
-          <p>${greeting}, generamos el pedido <strong>#${shortId}</strong> de tu suscripción a <strong>${opts.productName}</strong> en <strong>${opts.storeName}</strong>.</p>
+          <p>${hello}, generamos el pedido <strong>#${shortId}</strong> de tu suscripción a <strong>${esc(opts.productName)}</strong> en <strong>${esc(opts.storeName)}</strong>.</p>
           <p>Total: <strong>${total}</strong>. El pago se hace igual que en tu primer pedido; despacharemos en cuanto lo confirmemos.</p>
           <p>Puedes pausar, saltar o cancelar tu suscripción desde tu cuenta.</p>
         </div>
@@ -297,10 +326,7 @@ export class MailService {
     frequencyDays: number;
     nextShipAt: Date | null;
   }): Promise<void> {
-    const esc = escapeHtml;
-    const greeting = opts.customerName
-      ? `Hola ${esc(opts.customerName)}`
-      : 'Hola';
+    const hello = greeting(opts.customerName);
     const store = esc(opts.storeName);
     const product = esc(opts.productName);
     const next = opts.nextShipAt
@@ -322,27 +348,27 @@ export class MailService {
       paused: {
         subject: `Tu suscripción en ${opts.storeName} quedó en pausa`,
         title: 'Suscripción en pausa',
-        body: `<p>${greeting}, <strong>${store}</strong> pausó tu suscripción a <strong>${product}</strong>. No se generarán envíos mientras siga en pausa.</p>`,
+        body: `<p>${hello}, <strong>${store}</strong> pausó tu suscripción a <strong>${product}</strong>. No se generarán envíos mientras siga en pausa.</p>`,
       },
       resumed: {
         subject: `Tu suscripción en ${opts.storeName} está activa de nuevo`,
         title: 'Suscripción reanudada',
-        body: `<p>${greeting}, <strong>${store}</strong> reanudó tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+        body: `<p>${hello}, <strong>${store}</strong> reanudó tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
       },
       skipped: {
         subject: `Saltamos tu próximo envío de ${opts.storeName}`,
         title: 'Próximo envío saltado',
-        body: `<p>${greeting}, <strong>${store}</strong> saltó el próximo envío de tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+        body: `<p>${hello}, <strong>${store}</strong> saltó el próximo envío de tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
       },
       cancelled: {
         subject: `Tu suscripción en ${opts.storeName} fue cancelada`,
         title: 'Suscripción cancelada',
-        body: `<p>${greeting}, <strong>${store}</strong> canceló tu suscripción a <strong>${product}</strong>. No se generarán más envíos.</p>`,
+        body: `<p>${hello}, <strong>${store}</strong> canceló tu suscripción a <strong>${product}</strong>. No se generarán más envíos.</p>`,
       },
       frequency: {
         subject: `Cambió la frecuencia de tu suscripción en ${opts.storeName}`,
         title: 'Nueva frecuencia de envío',
-        body: `<p>${greeting}, <strong>${store}</strong> cambió tu suscripción a <strong>${product}</strong>: ahora recibes un envío <strong>cada ${opts.frequencyDays} días</strong>.</p>${nextLine}`,
+        body: `<p>${hello}, <strong>${store}</strong> cambió tu suscripción a <strong>${product}</strong>: ahora recibes un envío <strong>cada ${opts.frequencyDays} días</strong>.</p>${nextLine}`,
       },
     };
     const c = copy[opts.change];
@@ -368,7 +394,7 @@ export class MailService {
     orderId: string;
     storeName: string;
   }): Promise<void> {
-    const greeting = opts.customerName ? `Hola ${opts.customerName}` : 'Hola';
+    const hello = greeting(opts.customerName);
     const shortId = opts.orderId.slice(-6).toUpperCase();
 
     await this.send({
@@ -378,7 +404,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
           <h2>Pedido cancelado</h2>
-          <p>${greeting}, te informamos que tu pedido <strong>#${shortId}</strong> en <strong>${opts.storeName}</strong> ha sido cancelado.</p>
+          <p>${hello}, te informamos que tu pedido <strong>#${shortId}</strong> en <strong>${esc(opts.storeName)}</strong> ha sido cancelado.</p>
           <p>Si ya habías realizado el pago, el reembolso se procesará según los tiempos de tu entidad bancaria. Si tienes dudas, contáctanos respondiendo a la tienda.</p>
         </div>
       `,
@@ -394,15 +420,15 @@ export class MailService {
     roleLabel: string;
     accessUrl: string;
   }): Promise<void> {
-    const greeting = opts.name ? `Hola ${opts.name}` : 'Hola';
+    const hello = greeting(opts.name);
     await this.send({
       to: opts.to,
       subject: `Te agregaron al equipo de ${opts.storeName}`,
       fallbackLog: `Member invitation ${opts.to} (store: ${opts.storeName}, role: ${opts.roleLabel}). Access: ${opts.accessUrl}`,
       html: `
-        <p>${greeting},</p>
-        <p>Te agregaron al equipo de <strong>${opts.storeName}</strong> con el rol <strong>${opts.roleLabel}</strong>.</p>
-        <p><a href="${opts.accessUrl}">Entrar al panel</a></p>
+        <p>${hello},</p>
+        <p>Te agregaron al equipo de <strong>${esc(opts.storeName)}</strong> con el rol <strong>${esc(opts.roleLabel)}</strong>.</p>
+        <p><a href="${safeHref(opts.accessUrl) ?? '#'}">Entrar al panel</a></p>
         <p>Te pediremos tu correo para enviarte un enlace de acceso seguro (sin contraseña).</p>
         <p>Si no esperabas este correo, puedes ignorarlo.</p>
       `,
@@ -415,16 +441,16 @@ export class MailService {
     storeName: string,
     accessUrl: string,
   ): Promise<void> {
-    const greeting = ownerName ? `Hola ${ownerName}` : 'Hola';
+    const hello = greeting(ownerName);
     await this.send({
       to,
       subject: `Tu tienda ${storeName} está lista`,
       fallbackLog: `Welcome ${to} (store: ${storeName}). Access: ${accessUrl}`,
       html: `
-        <p>${greeting},</p>
-        <p>Creamos tu tienda <strong>${storeName}</strong> en BestCoffee.
+        <p>${hello},</p>
+        <p>Creamos tu tienda <strong>${esc(storeName)}</strong> en BestCoffee.
            Ya puedes acceder a tu panel para configurar productos, contenido y más.</p>
-        <p><a href="${accessUrl}">Acceder a mi panel</a></p>
+        <p><a href="${safeHref(accessUrl) ?? '#'}">Acceder a mi panel</a></p>
         <p>Te pediremos tu correo para enviarte un enlace de acceso seguro
            (sin contraseña).</p>
         <p>¡Bienvenido a bordo!</p>
