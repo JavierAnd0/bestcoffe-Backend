@@ -33,6 +33,9 @@ export type FeatureFlags = {
   // Premium (BUSINESS)
   gifts: boolean; // tarjetas de regalo / regalar suscripción
   customDomain: boolean; // dominio propio
+  // Analítica avanzada del panel: plan de tueste, clientes en riesgo y
+  // exportación. Lo básico (ventas, productos, clientes) viene con checkout.
+  advancedAnalytics: boolean;
 
   // Límites numéricos (-1 = ilimitado)
   maxProducts: number;
@@ -58,6 +61,7 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
     reviews: false,
     gifts: false,
     customDomain: false,
+    advancedAnalytics: false,
     maxProducts: 10,
   },
   PRO: {
@@ -72,6 +76,7 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
     reviews: true,
     gifts: false,
     customDomain: false,
+    advancedAnalytics: false,
     maxProducts: 50,
   },
   BUSINESS: {
@@ -86,6 +91,7 @@ export const TIER_FEATURES: Record<Tier, FeatureFlags> = {
     reviews: true,
     gifts: true,
     customDomain: true,
+    advancedAnalytics: true,
     maxProducts: -1,
   },
 };
