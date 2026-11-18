@@ -6,7 +6,10 @@ import type { MfaService } from './mfa.service';
 import { AuthService } from './auth.service';
 
 function setup(ownerEmail = 'root@plataforma.co') {
-  const prisma = { tenantMembership: { findFirst: jest.fn() } };
+  const prisma = {
+    tenantMembership: { findFirst: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ totpEnabledAt: null }) },
+  };
   const config = {
     get: jest.fn((k: string) =>
       k === 'platformOwnerEmail' ? ownerEmail : undefined,
@@ -28,7 +31,7 @@ describe('AuthService.getMe — rol en la tienda actual', () => {
   it('sin X-Tenant-Slug no consulta membresías ni devuelve tenantRole', async () => {
     const { prisma, service } = setup();
     const me = await service.getMe(user);
-    expect(me).toEqual({ ...user, isPlatformOwner: false });
+    expect(me).toEqual({ ...user, isPlatformOwner: false, mfaRequired: null });
     expect(prisma.tenantMembership.findFirst).not.toHaveBeenCalled();
   });
 
@@ -56,6 +59,26 @@ describe('AuthService.getMe — rol en la tienda actual', () => {
 
   it('marca al dueño de la plataforma', async () => {
     const { service } = setup('dueno@demo.test');
-    expect(await service.getMe(user)).toMatchObject({ isPlatformOwner: true });
+    expect(await service.getMe({ ...user, mfa: true })).toMatchObject({
+      isPlatformOwner: true,
+      mfaRequired: null,
+    });
+  });
+
+  it('dueño sin 2FA activado: mfaRequired = setup', async () => {
+    const { service } = setup('dueno@demo.test');
+    expect(await service.getMe(user)).toMatchObject({ mfaRequired: 'setup' });
+  });
+
+  it('dueño con 2FA pero sesión abierta sin código: mfaRequired = login', async () => {
+    const { prisma, service } = setup('dueno@demo.test');
+    prisma.user.findUnique.mockResolvedValue({ totpEnabledAt: new Date() });
+    expect(await service.getMe(user)).toMatchObject({ mfaRequired: 'login' });
+  });
+
+  it('un operador de tienda nunca tiene mfaRequired', async () => {
+    const { prisma, service } = setup();
+    expect(await service.getMe(user)).toMatchObject({ mfaRequired: null });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
   });
 });

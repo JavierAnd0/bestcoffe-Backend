@@ -93,7 +93,9 @@ export class AuthService {
       return { mfaRequired: true as const, mfaToken };
     }
 
-    return this.issueSession(user);
+    // Sin 2FA activo: sesión sin la marca `mfa`. Para la cuenta de la
+    // plataforma esa sesión solo abre /v1/auth/* (para activarlo).
+    return this.issueSession(user, false);
   }
 
   /** Paso 3 (solo con 2FA): código de la app o de respaldo → sesión. */
@@ -122,19 +124,36 @@ export class AuthService {
         memberships: { include: { tenant: { select: { slug: true } } } },
       },
     });
-    return this.issueSession(user);
+    return this.issueSession(user, true);
   }
 
-  private async issueSession(user: {
-    id: string;
-    email: string;
-    name: string | null;
-    memberships: { role: string; tenant: { slug: string } }[];
-  }) {
+  /**
+   * Sesión nueva con la marca `mfa` justo después de activar el 2FA: el
+   * operador acaba de probar el código, no hace falta que vuelva a entrar.
+   */
+  async sessionAfterMfaSetup(user: { id: string; email: string }) {
+    return this.signToken({
+      sub: user.id,
+      email: user.email,
+      type: 'operator',
+      mfa: true,
+    });
+  }
+
+  private async issueSession(
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+      memberships: { role: string; tenant: { slug: string } }[];
+    },
+    mfa: boolean,
+  ) {
     const accessToken = await this.signToken({
       sub: user.id,
       email: user.email,
       type: 'operator',
+      ...(mfa && { mfa: true }),
     });
 
     const ownerEmail = this.config.get<string>('platformOwnerEmail');
@@ -159,10 +178,18 @@ export class AuthService {
 
   async getMe(user: CurrentUserData, tenantSlug?: string) {
     const ownerEmail = this.config.get<string>('platformOwnerEmail');
-    const me = {
-      ...user,
-      isPlatformOwner: !!ownerEmail && user.email === ownerEmail,
-    };
+    const isPlatformOwner = !!ownerEmail && user.email === ownerEmail;
+    // Cuenta de la plataforma sin sesión con 2FA: 'setup' si aún no lo activó,
+    // 'login' si ya lo tiene pero esta sesión se abrió sin el código.
+    let mfaRequired: 'setup' | 'login' | null = null;
+    if (isPlatformOwner && user.mfa !== true) {
+      const row = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { totpEnabledAt: true },
+      });
+      mfaRequired = row?.totpEnabledAt ? 'login' : 'setup';
+    }
+    const me = { ...user, isPlatformOwner, mfaRequired };
     const slug = tenantSlug?.trim();
     if (!slug) return me;
 
@@ -172,6 +199,11 @@ export class AuthService {
       select: { role: true },
     });
     return { ...me, tenantRole: membership?.role ?? null };
+  }
+
+  isPlatformOwner(email: string): boolean {
+    const ownerEmail = this.config.get<string>('platformOwnerEmail');
+    return !!ownerEmail && email === ownerEmail;
   }
 
   signToken(payload: JwtPayload): Promise<string> {
