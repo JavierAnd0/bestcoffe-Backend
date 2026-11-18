@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Patch,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CustomerAuthGuard } from '../../common/guards/customer-auth.guard';
 import { CurrentCustomer } from '../../common/decorators/current-customer.decorator';
@@ -26,5 +34,14 @@ export class CustomersController {
     @Body() dto: UpdateCustomerDto,
   ) {
     return this.customers.updateMe(customer.id, dto);
+  }
+
+  /** "Eliminar mi cuenta": anonimiza al cliente y cancela sus suscripciones. */
+  @Delete('me')
+  @UseGuards(CustomerAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  deleteMe(@CurrentCustomer() customer: CurrentCustomerData) {
+    return this.customers.deleteMe(customer.id);
   }
 }

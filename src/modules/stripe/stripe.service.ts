@@ -61,7 +61,8 @@ export class StripeService {
 
   /**
    * Crea un PaymentIntent para cobrar una orden.
-   * COP es zero-decimal en Stripe → amount = centavos_db / 100.
+   * Stripe trata COP como moneda de dos decimales: `amount` va en centavos,
+   * igual que `totalCents` en la base (no se divide entre 100).
    */
   async createPaymentIntent(
     amountCents: number,
@@ -69,7 +70,7 @@ export class StripeService {
     tenantId: string,
   ): Promise<{ clientSecret: string; piId: string }> {
     const pi = await this.sdk.paymentIntents.create({
-      amount: Math.round(amountCents / 100),
+      amount: amountCents,
       currency: 'cop',
       metadata: { orderId, tenantId },
     });
@@ -169,7 +170,7 @@ export class StripeService {
     tenantId: string,
   ): Promise<{ piId: string; status: string }> {
     const pi = await this.sdk.paymentIntents.create({
-      amount: Math.round(amountCents / 100),
+      amount: amountCents,
       currency: 'cop',
       customer: stripeCustomerId,
       off_session: true,

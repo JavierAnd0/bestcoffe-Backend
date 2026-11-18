@@ -23,9 +23,13 @@ export class ReviewsService {
     }
 
     const email = dto.email.toLowerCase().trim();
+    // El correo de una reseña no está verificado: nadie probó que sea de quien
+    // escribe. Por eso una reseña nunca modifica un cliente que ya existe (antes
+    // cambiaba su nombre, que luego salía en sus correos). Igual que el pedido
+    // de invitado: update vacío.
     const customer = await this.prisma.customer.upsert({
       where: { tenantId_email: { tenantId, email } },
-      update: { ...(dto.name && { name: dto.name }) },
+      update: {},
       create: { tenantId, email, name: dto.name },
       select: { id: true },
     });

@@ -286,6 +286,10 @@ model Customer {
   newsletterOptIn     Boolean   @default(true)
   newsletterUpdatedAt DateTime?
 
+  // Cuenta eliminada por el cliente: datos personales anonimizados y sesiones
+  // rechazadas por el guard. La fila queda porque los pedidos la referencian.
+  deletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

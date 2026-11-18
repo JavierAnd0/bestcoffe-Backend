@@ -24,6 +24,7 @@ import {
   AWAITING_FIRST_PAYMENT,
   isAwaitingFirstPayment,
 } from '../subscriptions/subscription-first-order';
+import { variantLabel } from './variant-label';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -122,6 +123,10 @@ export class CheckoutService {
     }
 
     // 1. Precio autoritativo — valida variantes, stock, descuento, envío.
+    // Un invitado se valida como "sin cliente": su customerId sale de un correo
+    // escrito sin verificar, así que un cupón de un solo uso no puede quedar
+    // atado a él (con un correo nuevo por pedido se reutilizaba sin límite).
+    const discountCustomerId = opts.guest ? undefined : customerId;
     const priced = await this.cart.price(
       tenantId,
       {
@@ -129,7 +134,7 @@ export class CheckoutService {
         mode: dto.mode,
         discountCode: dto.discountCode,
       },
-      customerId,
+      discountCustomerId,
     );
 
     if (priced.hasStockIssues) {
@@ -162,6 +167,18 @@ export class CheckoutService {
         });
       }
 
+      // El cupón se valida otra vez dentro de la transacción, con su fila
+      // bloqueada: dos checkouts simultáneos con el mismo cupón ya no pueden
+      // pasar los dos el tope de usos o el "un uso por cliente".
+      if (priced.discount?.valid) {
+        await this.reserveDiscount(
+          tx,
+          tenantId,
+          priced.discount.code,
+          discountCustomerId,
+        );
+      }
+
       const subscriptionIds = isSubscription
         ? await this.upsertPendingSubscriptions(tx, tenantId, customerId, dto)
         : [];
@@ -190,7 +207,7 @@ export class CheckoutService {
               tenantId,
               variantId: line.variantId,
               productName: line.productName,
-              variantName: `${line.sizeGrams}g · ${line.grind}`,
+              variantName: variantLabel(line),
               grind: line.grind,
               sizeGrams: line.sizeGrams,
               unitCents: line.unitCents,
@@ -241,51 +258,35 @@ export class CheckoutService {
     }
 
     // 3b. Cobro según el proveedor configurado en la tienda.
+    // MercadoPago: Checkout Pro. Se crea la preferencia y el comprador paga en
+    // la página de MercadoPago; el pedido queda pendiente hasta que el webhook
+    // (o la confirmación, al volver) traiga el pago aprobado.
     if (tenant.paymentProvider === 'MERCADOPAGO') {
-      if (!tenant.mpConnected) {
-        await this.markOrderFailed(
-          order.id,
-          'La tienda no tiene MercadoPago conectado',
-        );
-        throw new BadRequestException(
-          'La tienda no tiene MercadoPago conectado',
-        );
-      }
-      if (!dto.payment) {
-        await this.markOrderFailed(
-          order.id,
-          'Faltan los datos de pago (tarjeta)',
-        );
-        throw new BadRequestException('Faltan los datos de pago (tarjeta)');
-      }
       try {
-        // createPayment persiste mpPaymentId en la orden (vía applyPaymentStatus),
-        // de modo que el webhook pueda reconciliar el estado por ese id.
-        const result = await this.mercadopago.createPayment(
-          order.id,
-          dto.payment,
-        );
+        const pref = await this.mercadopago.createPreference(order.id, {
+          returnOrigin: dto.returnOrigin,
+        });
         return {
           orderId: order.id,
           provider: 'MERCADOPAGO' as const,
-          paymentStatus: result.status,
-          statusDetail: result.statusDetail,
-          mpPaymentId: result.mpPaymentId,
+          paymentStatus: 'PENDING' as const,
+          checkoutUrl: pref.checkoutUrl,
+          preferenceId: pref.preferenceId,
           totalCents: order.totalCents,
           summary,
         };
       } catch (err) {
         this.logger.error(
-          `Fallo al crear el pago de MercadoPago para orden ${order.id}`,
+          `Fallo al crear la preferencia de MercadoPago para orden ${order.id}`,
           err,
         );
         await this.markOrderFailed(
           order.id,
-          'Fallo al crear el pago de MercadoPago',
+          'Fallo al crear la preferencia de MercadoPago',
         );
         if (err instanceof HttpException) throw err;
         throw new BadGatewayException(
-          'No se pudo procesar el pago con MercadoPago. Intenta nuevamente.',
+          'No se pudo iniciar el pago con MercadoPago. Intenta nuevamente.',
         );
       }
     }
@@ -460,6 +461,72 @@ export class CheckoutService {
       }
     }
     return ids;
+  }
+
+  /**
+   * Reserva el uso de un cupón dentro de la transacción del pedido. Bloquea la
+   * fila del cupón (FOR UPDATE), así los checkouts simultáneos con el mismo
+   * código se ordenan y cada uno ve los pedidos ya creados por el anterior.
+   * Repite los límites de CartService.validateDiscount con datos frescos.
+   */
+  private async reserveDiscount(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    code: string,
+    customerId?: string,
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<
+      Array<{
+        maxRedemptions: number | null;
+        timesRedeemed: number;
+        oneUsePerCustomer: boolean;
+        active: boolean;
+      }>
+    >`SELECT "maxRedemptions", "timesRedeemed", "oneUsePerCustomer", "active"
+      FROM "DiscountCode"
+      WHERE "tenantId" = ${tenantId} AND "code" = ${code}
+      FOR UPDATE`;
+    const dc = rows[0];
+    if (!dc || !dc.active) {
+      throw new BadRequestException('El cupón ya no está disponible');
+    }
+    if (dc.maxRedemptions) {
+      const pending = await tx.order.count({
+        where: {
+          tenantId,
+          discountCode: code,
+          paymentStatus: 'PENDING',
+          status: { not: 'CANCELLED' },
+        },
+      });
+      if (dc.timesRedeemed + pending >= dc.maxRedemptions) {
+        throw new BadRequestException(
+          'El cupón se agotó mientras confirmabas tu pedido',
+        );
+      }
+    }
+    if (dc.oneUsePerCustomer) {
+      if (!customerId) {
+        throw new BadRequestException(
+          'Inicia sesión para usar este cupón de un solo uso',
+        );
+      }
+      const previous = await tx.order.findFirst({
+        where: {
+          tenantId,
+          customerId,
+          discountCode: code,
+          paymentStatus: { in: ['PAID', 'PENDING'] },
+          status: { not: 'CANCELLED' },
+        },
+        select: { id: true },
+      });
+      if (previous) {
+        throw new BadRequestException(
+          'Ya has utilizado este código de descuento',
+        );
+      }
+    }
   }
 
   /**

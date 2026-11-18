@@ -83,6 +83,15 @@ export class CustomerAuthGuard implements CanActivate {
         throw new Error('tipo de token incorrecto');
       }
       await this.assertSameTenant(req, payload.tenantId);
+      // Una cuenta eliminada no conserva sus sesiones: los JWT no se pueden
+      // revocar, así que se comprueba en la base (búsqueda por clave primaria).
+      const account = await this.prisma.customer.findUnique({
+        where: { id: payload.sub },
+        select: { deletedAt: true },
+      });
+      if (!account || account.deletedAt) {
+        throw new Error('cuenta inexistente o eliminada');
+      }
       req.customer = {
         id: payload.sub,
         email: payload.email,

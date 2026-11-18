@@ -16,40 +16,6 @@ import {
 import { Type } from 'class-transformer';
 import { CartItemDto, PurchaseMode } from '../../cart/dto/price-cart.dto';
 
-/**
- * Datos del pago transparente (Checkout API de MercadoPago). El frontend
- * tokeniza la tarjeta con MercadoPago.js usando la public key del vendedor y
- * envía aquí el token resultante. Obligatorio solo cuando la tienda usa
- * MercadoPago como proveedor (se valida en el checkout).
- */
-export class MpPaymentInputDto {
-  @ApiProperty({ description: 'Card token generado por MercadoPago.js' })
-  @IsString()
-  cardToken!: string;
-
-  @ApiProperty({ example: 'visa' })
-  @IsString()
-  paymentMethodId!: string;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  installments?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  issuerId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Email del pagador; por defecto el del cliente',
-  })
-  @IsOptional()
-  @IsEmail()
-  payerEmail?: string;
-}
-
 export class ShippingAddressDto {
   @ApiPropertyOptional({
     example: 'Ana Pérez',
@@ -159,11 +125,15 @@ export class CreateOrderDto {
   @Type(() => ShippingAddressDto)
   shippingAddress!: ShippingAddressDto;
 
-  @ApiPropertyOptional({ type: MpPaymentInputDto })
+  @ApiPropertyOptional({
+    example: 'https://tienda.com',
+    description:
+      'Origen de la tienda al que vuelve el comprador tras pagar en MercadoPago. Se acepta solo si es la web de la plataforma o un dominio verificado de la tienda.',
+  })
   @IsOptional()
-  @ValidateNested()
-  @Type(() => MpPaymentInputDto)
-  payment?: MpPaymentInputDto;
+  @IsString()
+  @MaxLength(200)
+  returnOrigin?: string;
 }
 
 /**

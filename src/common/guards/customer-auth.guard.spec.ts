@@ -18,7 +18,11 @@ function ctx(
   };
 }
 
-function makeGuard(payload: Record<string, unknown> | Error, slug = 'origen') {
+function makeGuard(
+  payload: Record<string, unknown> | Error,
+  slug = 'origen',
+  account: { deletedAt: Date | null } | null = { deletedAt: null },
+) {
   const jwt = {
     verifyAsync: jest
       .fn()
@@ -31,6 +35,7 @@ function makeGuard(payload: Record<string, unknown> | Error, slug = 'origen') {
   const config = { get: () => 'secret' } as unknown as ConfigService;
   const prisma = {
     tenant: { findUnique: jest.fn().mockResolvedValue({ slug }) },
+    customer: { findUnique: jest.fn().mockResolvedValue(account) },
   } as unknown as PrismaService;
   return new CustomerAuthGuard(jwt, config, prisma);
 }
@@ -85,5 +90,21 @@ describe('CustomerAuthGuard', () => {
         ctx({}, { customer_token: 'x' }).context,
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rechaza (401) la sesión de una cuenta eliminada aunque el token no haya vencido', async () => {
+    const { context } = ctx({}, { customer_token: 'jwt' });
+    await expect(
+      makeGuard(valid, 'origen', { deletedAt: new Date() }).canActivate(
+        context,
+      ),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rechaza (401) la sesión de un cliente que ya no existe', async () => {
+    const { context } = ctx({}, { customer_token: 'jwt' });
+    await expect(
+      makeGuard(valid, 'origen', null).canActivate(context),
+    ).rejects.toThrow(UnauthorizedException);
   });
 });

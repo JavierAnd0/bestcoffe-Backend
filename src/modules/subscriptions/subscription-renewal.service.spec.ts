@@ -13,6 +13,9 @@ describe('SubscriptionRenewalService — tiendas suspendidas', () => {
   const build = (subscriptions: boolean) => {
     const prisma = {
       subscription: {
+        groupBy: jest
+          .fn()
+          .mockResolvedValue([{ tenantId: 't1', _min: { nextShipAt: null } }]),
         findMany: jest.fn().mockResolvedValue([{ id: 's1', tenantId: 't1' }]),
         update: jest.fn(),
       },
@@ -116,6 +119,9 @@ describe('SubscriptionRenewalService — renovación sin pasarela', () => {
     };
     const prisma = {
       subscription: {
+        groupBy: jest
+          .fn()
+          .mockResolvedValue([{ tenantId: 't1', _min: { nextShipAt: null } }]),
         findMany: jest.fn().mockResolvedValue([due]),
         update: jest.fn().mockResolvedValue({}),
       },

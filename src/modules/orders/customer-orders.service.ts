@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { variantLabel } from './variant-label';
 
 @Injectable()
 export class CustomerOrdersService {
@@ -45,6 +46,7 @@ export class CustomerOrdersService {
         items: {
           select: {
             id: true,
+            variantId: true,
             productName: true,
             variantName: true,
             grind: true,
@@ -57,6 +59,47 @@ export class CustomerOrdersService {
       },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
-    return order;
+
+    // El artículo es una copia fija del momento de la compra (sin imagen). Se
+    // completa con la portada y el tipo del producto actual, si sigue existiendo.
+    const variantIds = [...new Set(order.items.map((i) => i.variantId))];
+    const variants = variantIds.length
+      ? await this.prisma.productVariant.findMany({
+          where: { id: { in: variantIds }, tenantId: order.tenantId },
+          select: {
+            id: true,
+            product: {
+              select: {
+                slug: true,
+                type: true,
+                images: {
+                  orderBy: { position: 'asc' },
+                  take: 1,
+                  select: { url: true, alt: true },
+                },
+              },
+            },
+          },
+        })
+      : [];
+    const byId = new Map(variants.map((v) => [v.id, v.product]));
+
+    return {
+      ...order,
+      items: order.items.map(({ variantId, ...item }) => {
+        const product = byId.get(variantId);
+        return {
+          ...item,
+          variantLabel: variantLabel({
+            sizeGrams: item.sizeGrams,
+            grind: item.grind,
+            productType: product?.type,
+          }),
+          productSlug: product?.slug ?? null,
+          imageUrl: product?.images[0]?.url ?? null,
+          imageAlt: product?.images[0]?.alt ?? null,
+        };
+      }),
+    };
   }
 }

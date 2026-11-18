@@ -7,12 +7,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { MercadoPagoConfig, OAuth, Payment } from 'mercadopago';
-import { Prisma } from '@prisma/client';
+import { MercadoPagoConfig, OAuth, Payment, Preference } from 'mercadopago';
+import { PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveSecretBoxKey, open, seal } from '../../common/crypto/secret-box';
 import { OrderSettlementService } from '../orders/order-settlement.service';
-import type { MpPaymentInputDto } from '../orders/dto/create-order.dto';
 
 // El SDK de MercadoPago no tipa estos retornos de forma cómoda; declaramos lo
 // mínimo que consumimos y casteamos con `as unknown as`.
@@ -27,7 +26,21 @@ type MpPaymentResult = {
   id: number;
   status: string; // approved | pending | in_process | authorized | rejected | cancelled | refunded | charged_back
   status_detail: string;
+  external_reference?: string | null;
 };
+
+type MpPreferenceResult = { id: string; init_point: string };
+
+/** Origen (`https://host[:puerto]`) de una URL http(s), o null si no lo es. */
+function safeOrigin(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
 
 type TenantMpCreds = {
   id: string;
@@ -123,6 +136,10 @@ export class MercadoPagoService {
         mpPublicKey: creds.public_key,
         mpTokenExpiresAt: new Date(Date.now() + creds.expires_in * 1000),
         mpConnected: true,
+        // Conectar MercadoPago lo deja como pasarela de la tienda (el valor por
+        // defecto es STRIPE, que está apagado para tiendas: sin esto el pedido
+        // quedaba manual aunque la cuenta estuviera conectada).
+        paymentProvider: 'MERCADOPAGO',
       },
     });
   }
@@ -175,22 +192,27 @@ export class MercadoPagoService {
     return { disconnected: true };
   }
 
-  // ─── Pago transparente (Checkout API) ───────────────────────────────────────
+  // ─── Checkout Pro ───────────────────────────────────────────────────────────
 
   /**
-   * Crea un pago en nombre de la tienda usando su access token + comisión de
-   * marketplace. COP es zero-decimal → transaction_amount = centavos_db / 100.
+   * Crea la preferencia de Checkout Pro de un pedido, en la cuenta de la
+   * tienda y con la comisión de la plataforma. El comprador paga en la página
+   * de MercadoPago con lo que tenga (tarjetas guardadas, saldo, PSE, Nequi,
+   * Efecty…) y vuelve a la confirmación de la tienda.
+   *
+   * MercadoPago recibe pesos, no centavos: unit_price = centavos / 100.
    */
-  async createPayment(
+  async createPreference(
     orderId: string,
-    input: MpPaymentInputDto,
-  ): Promise<{ status: string; mpPaymentId: string; statusDetail: string }> {
+    opts: { returnOrigin?: string } = {},
+  ): Promise<{ preferenceId: string; checkoutUrl: string }> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
         tenant: {
           select: {
             id: true,
+            name: true,
             mpAccessToken: true,
             mpRefreshToken: true,
             mpTokenExpiresAt: true,
@@ -198,7 +220,7 @@ export class MercadoPagoService {
             commissionPct: true,
           },
         },
-        customer: { select: { email: true } },
+        customer: { select: { email: true, name: true } },
       },
     });
     if (!order) throw new BadRequestException('Orden no encontrada');
@@ -213,34 +235,135 @@ export class MercadoPagoService {
       order.tenant.commissionPct != null
         ? order.tenant.commissionPct
         : (this.config.get<number>('mercadopago.marketplaceFeePct') ?? 0);
-    const applicationFee =
+    const marketplaceFee =
       feePct > 0 ? Math.round((amount * feePct) / 100) : undefined;
 
-    const payment = new Payment(this.client(accessToken));
-    const result = (await payment.create({
+    const back = await this.returnBase(
+      order.tenantId,
+      orderId,
+      opts.returnOrigin,
+    );
+    // auto_return solo se acepta con una URL de éxito HTTPS (en local, el
+    // comprador vuelve con el botón «Volver a la tienda» de MercadoPago).
+    const httpsBack = back.startsWith('https://');
+    const code = orderId.slice(-8).toUpperCase();
+
+    const preference = new Preference(this.client(accessToken));
+    const result = (await preference.create({
       body: {
-        transaction_amount: amount,
-        token: input.cardToken,
-        installments: input.installments ?? 1,
-        payment_method_id: input.paymentMethodId,
-        ...(input.issuerId && { issuer_id: Number(input.issuerId) }),
-        payer: { email: input.payerEmail ?? order.customer.email },
+        // Una sola línea con el total ya cotizado (envío y cupón incluidos):
+        // MercadoPago cobra exactamente lo que dice el pedido.
+        items: [
+          {
+            id: orderId,
+            title: `Pedido #${code} · ${order.tenant.name}`,
+            quantity: 1,
+            unit_price: amount,
+            currency_id: 'COP',
+          },
+        ],
+        payer: { email: order.customer.email },
         external_reference: orderId,
-        ...(applicationFee !== undefined && {
-          application_fee: applicationFee,
-        }),
         metadata: { orderId, tenantId: order.tenantId },
+        back_urls: {
+          success: `${back}&pago=aprobado`,
+          pending: `${back}&pago=pendiente`,
+          failure: `${back}&pago=fallido`,
+        },
+        ...(httpsBack && { auto_return: 'approved' }),
+        statement_descriptor: order.tenant.name.slice(0, 22),
+        ...(marketplaceFee !== undefined && {
+          marketplace_fee: marketplaceFee,
+        }),
       },
-      requestOptions: { idempotencyKey: orderId },
-    })) as unknown as MpPaymentResult;
+      requestOptions: { idempotencyKey: `pref-${orderId}` },
+    })) as unknown as MpPreferenceResult;
 
-    await this.applyPaymentStatus(orderId, String(result.id), result.status);
+    return { preferenceId: result.id, checkoutUrl: result.init_point };
+  }
 
-    return {
-      status: result.status,
-      mpPaymentId: String(result.id),
-      statusDetail: result.status_detail,
-    };
+  /**
+   * Al volver de MercadoPago, la confirmación pide el estado real del pago
+   * (sin esperar el webhook). Solo se aplica si el pago es de esa tienda y su
+   * `external_reference` es ese pedido.
+   */
+  async syncPayment(
+    tenantId: string,
+    orderId: string,
+    paymentId: string,
+  ): Promise<{ paymentStatus: PaymentStatus | null; mpStatus: string | null }> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, tenantId },
+      select: {
+        id: true,
+        tenant: {
+          select: {
+            id: true,
+            mpAccessToken: true,
+            mpRefreshToken: true,
+            mpTokenExpiresAt: true,
+          },
+        },
+      },
+    });
+    if (!order) return { paymentStatus: null, mpStatus: null };
+
+    let got: MpPaymentResult;
+    try {
+      got = await this.fetchPayment(order.tenant, paymentId);
+    } catch (err) {
+      this.logger.warn(
+        `Sync MP: no se pudo consultar el pago ${paymentId} del pedido ${orderId}: ${String(err)}`,
+      );
+      return this.currentStatus(orderId, null);
+    }
+    if (got.external_reference !== orderId) {
+      this.logger.warn(
+        `Sync MP: el pago ${paymentId} no es del pedido ${orderId} (referencia ${got.external_reference ?? '—'})`,
+      );
+      return this.currentStatus(orderId, null);
+    }
+    await this.applyPaymentStatus(orderId, paymentId, got.status);
+    return this.currentStatus(orderId, got.status);
+  }
+
+  private async currentStatus(orderId: string, mpStatus: string | null) {
+    const o = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { paymentStatus: true },
+    });
+    return { paymentStatus: o?.paymentStatus ?? null, mpStatus };
+  }
+
+  /**
+   * Base de la URL de regreso a la confirmación. Solo se acepta un origen que
+   * sea la web de la plataforma o un dominio verificado de la tienda; en otro
+   * caso se usa la web de la plataforma.
+   */
+  private async returnBase(
+    tenantId: string,
+    orderId: string,
+    requested?: string,
+  ): Promise<string> {
+    const webUrl = this.config.get<string>('webAppUrl') ?? '';
+    let origin = safeOrigin(webUrl) ?? '';
+    const asked = requested ? safeOrigin(requested) : null;
+    if (asked && asked !== origin) {
+      const host = new URL(asked).hostname;
+      const isLocal =
+        this.config.get<string>('nodeEnv') !== 'production' &&
+        (host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host.endsWith('.localhost'));
+      const domain = isLocal
+        ? null
+        : await this.prisma.tenantDomain.findFirst({
+            where: { tenantId, domain: host, verified: true },
+            select: { id: true },
+          });
+      if (isLocal || domain) origin = asked;
+    }
+    return `${origin}/checkout/confirmacion?orderId=${encodeURIComponent(orderId)}`;
   }
 
   // ─── Webhook ────────────────────────────────────────────────────────────────
@@ -248,7 +371,9 @@ export class MercadoPagoService {
   async handleWebhook(
     query: Record<string, string>,
     headers: Record<string, string>,
-    body: { type?: string; data?: { id?: string } } | undefined,
+    body:
+      | { type?: string; data?: { id?: string }; user_id?: string | number }
+      | undefined,
   ): Promise<void> {
     if (!this.verifySignature(query, headers)) {
       throw new BadRequestException('Firma de webhook inválida');
@@ -260,33 +385,63 @@ export class MercadoPagoService {
     const paymentId = query['data.id'] ?? body?.data?.id;
     if (!paymentId) return;
 
-    // El pago ya quedó asociado a la orden en createPayment; de ahí sacamos el
-    // tenant (y su token) para consultar el estado real en MercadoPago.
+    const tenantSelect = {
+      id: true,
+      mpAccessToken: true,
+      mpRefreshToken: true,
+      mpTokenExpiresAt: true,
+    } as const;
+
+    // Camino normal: createPayment ya guardó el id del pago en la orden.
     const order = await this.prisma.order.findFirst({
       where: { mpPaymentId: paymentId },
-      include: {
-        tenant: {
-          select: {
-            id: true,
-            mpAccessToken: true,
-            mpRefreshToken: true,
-            mpTokenExpiresAt: true,
-          },
-        },
-      },
+      select: { id: true, tenant: { select: tenantSelect } },
     });
-    if (!order) {
-      this.logger.warn(`Webhook MP: pago ${paymentId} sin orden asociada`);
+    if (order) {
+      const got = await this.fetchPayment(order.tenant, paymentId);
+      await this.applyPaymentStatus(order.id, paymentId, got.status);
       return;
     }
 
-    const accessToken = await this.getFreshAccessToken(order.tenant);
-    const payment = new Payment(this.client(accessToken));
-    const got = (await payment.get({
-      id: paymentId,
-    })) as unknown as MpPaymentResult;
+    // Carrera: el aviso llegó antes de que createPayment guardara el id (o la
+    // respuesta se perdió). El aviso trae el `user_id` del vendedor: con él se
+    // halla la tienda, se consulta el pago con su token y la orden sale de
+    // `external_reference`.
+    const sellerId = body?.user_id != null ? String(body.user_id) : null;
+    const tenant = sellerId
+      ? await this.prisma.tenant.findFirst({
+          where: { mpUserId: sellerId, mpConnected: true },
+          select: tenantSelect,
+        })
+      : null;
+    if (!tenant) {
+      this.logger.warn(`Webhook MP: pago ${paymentId} sin orden asociada`);
+      return;
+    }
+    const got = await this.fetchPayment(tenant, paymentId);
+    const orderId = got.external_reference;
+    const owned = orderId
+      ? await this.prisma.order.findFirst({
+          where: { id: orderId, tenantId: tenant.id },
+          select: { id: true },
+        })
+      : null;
+    if (!owned) {
+      this.logger.warn(
+        `Webhook MP: pago ${paymentId} con referencia ${orderId ?? '—'} que no es de la tienda ${tenant.id}`,
+      );
+      return;
+    }
+    await this.applyPaymentStatus(owned.id, paymentId, got.status);
+  }
 
-    await this.applyPaymentStatus(order.id, paymentId, got.status);
+  private async fetchPayment(
+    tenant: TenantMpCreds,
+    paymentId: string,
+  ): Promise<MpPaymentResult> {
+    const accessToken = await this.getFreshAccessToken(tenant);
+    const payment = new Payment(this.client(accessToken));
+    return (await payment.get({ id: paymentId })) as unknown as MpPaymentResult;
   }
 
   /** HMAC-SHA256 del manifest `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`. */
@@ -335,16 +490,25 @@ export class MercadoPagoService {
       await this.markOrderPaid(orderId, mpPaymentId);
       return;
     }
-    let paymentStatus: Prisma.OrderUpdateInput['paymentStatus'];
-    if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
-      paymentStatus = 'FAILED';
-    } else if (mpStatus === 'refunded' || mpStatus === 'charged_back') {
+    // Con Checkout Pro un rechazo no cierra el pedido: el comprador puede
+    // intentar con otro medio en la misma página de MercadoPago. El pedido
+    // sigue pendiente hasta que un pago se apruebe.
+    if (mpStatus === 'rejected' || mpStatus === 'cancelled') return;
+    let paymentStatus: PaymentStatus;
+    if (mpStatus === 'refunded' || mpStatus === 'charged_back') {
       paymentStatus = 'REFUNDED';
     } else {
       paymentStatus = 'PENDING'; // pending / in_process / authorized
     }
-    await this.prisma.order.update({
-      where: { id: orderId },
+    // Los avisos pueden llegar desordenados: un pedido ya pagado solo puede
+    // pasar a reembolsado, nunca volver a pendiente o fallido.
+    await this.prisma.order.updateMany({
+      where: {
+        id: orderId,
+        ...(paymentStatus !== 'REFUNDED' && {
+          paymentStatus: { notIn: ['PAID', 'REFUNDED'] },
+        }),
+      },
       data: { paymentStatus, mpPaymentId },
     });
   }
