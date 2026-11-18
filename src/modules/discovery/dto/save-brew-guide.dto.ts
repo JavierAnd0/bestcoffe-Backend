@@ -5,6 +5,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -39,6 +40,52 @@ export class BrewStepDto {
   @Min(0)
   @Max(86400)
   durationSec?: number;
+
+  @ApiPropertyOptional({
+    description: 'Agua acumulada al terminar el paso, en gramos',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(5000)
+  waterG?: number | null;
+}
+
+/** Receta base: café, agua, temperatura y molienda. Todo opcional. */
+export class BrewRecipeDto {
+  @ApiPropertyOptional({ description: 'Café en gramos', nullable: true })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(2000)
+  coffeeG?: number | null;
+
+  @ApiPropertyOptional({ description: 'Agua en ml', nullable: true })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(10000)
+  waterMl?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Temperatura del agua en °C',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(100)
+  tempC?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Molienda ("Media-fina")',
+    maxLength: 60,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  grind?: string;
 }
 
 export class CreateBrewGuideDto {
@@ -89,6 +136,12 @@ export class CreateBrewGuideDto {
   @IsOptional()
   @IsIn(BREW_DIFFICULTIES)
   difficulty?: BrewDifficulty;
+
+  @ApiPropertyOptional({ type: BrewRecipeDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrewRecipeDto)
+  recipe?: BrewRecipeDto;
 
   @ApiPropertyOptional({ type: [BrewStepDto] })
   @IsOptional()

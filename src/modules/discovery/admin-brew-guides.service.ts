@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RevalidationService } from '../revalidation/revalidation.service';
 import { firstFreeSlug, slugify } from '../content/slug.util';
 import {
+  EMPTY_RECIPE,
   parseBrewGuideBody,
   serializeBrewGuideBody,
   type BrewGuideContent,
@@ -90,6 +91,7 @@ export class AdminBrewGuidesService {
       dto.summary !== undefined ||
       dto.totalTime !== undefined ||
       dto.difficulty !== undefined ||
+      dto.recipe !== undefined ||
       dto.steps !== undefined;
 
     const guide = await this.prisma.brewGuide.update({
@@ -128,6 +130,7 @@ export class AdminBrewGuidesService {
       summary: '',
       totalTime: '',
       difficulty: 'Media',
+      recipe: { ...EMPTY_RECIPE },
       steps: [],
     },
   ): BrewGuideContent {
@@ -135,11 +138,20 @@ export class AdminBrewGuidesService {
       summary: dto.summary?.trim() ?? base.summary,
       totalTime: dto.totalTime?.trim() ?? base.totalTime,
       difficulty: dto.difficulty ?? base.difficulty,
+      recipe: dto.recipe
+        ? {
+            coffeeG: dto.recipe.coffeeG ?? null,
+            waterMl: dto.recipe.waterMl ?? null,
+            tempC: dto.recipe.tempC ?? null,
+            grind: dto.recipe.grind?.trim() ?? '',
+          }
+        : base.recipe,
       steps: dto.steps
         ? dto.steps.map((s) => ({
             title: s.title.trim(),
             body: s.body?.trim() ?? '',
             durationSec: s.durationSec ?? 0,
+            waterG: s.waterG ?? null,
           }))
         : base.steps,
     };

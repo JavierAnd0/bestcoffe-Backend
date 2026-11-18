@@ -48,7 +48,37 @@ describe('parseBrewGuideBody', () => {
       JSON.stringify({ difficulty: 'Extrema', steps: [{ title: 1 }, null] }),
     );
     expect(parsed.difficulty).toBe('Media');
-    expect(parsed.steps).toEqual([{ title: '', body: '', durationSec: 0 }]);
+    expect(parsed.steps).toEqual([
+      { title: '', body: '', durationSec: 0, waterG: null },
+    ]);
+  });
+
+  it('lee la receta y el agua de cada paso; las guías sin receta quedan vacías', () => {
+    const parsed = parseBrewGuideBody(
+      JSON.stringify({
+        recipe: { coffeeG: 15, waterMl: 250, tempC: 93, grind: 'Media-fina' },
+        steps: [{ title: 'Bloom', durationSec: 40, waterG: 45 }],
+      }),
+    );
+    expect(parsed.recipe).toEqual({
+      coffeeG: 15,
+      waterMl: 250,
+      tempC: 93,
+      grind: 'Media-fina',
+    });
+    expect(parsed.steps[0].waterG).toBe(45);
+
+    expect(parseBrewGuideBody(JSON.stringify({ steps: [] })).recipe).toEqual({
+      coffeeG: null,
+      waterMl: null,
+      tempC: null,
+      grind: '',
+    });
+    expect(
+      parseBrewGuideBody(
+        JSON.stringify({ recipe: { coffeeG: -3, tempC: 'x' } }),
+      ).recipe,
+    ).toMatchObject({ coffeeG: null, tempC: null });
   });
 });
 
@@ -74,7 +104,7 @@ describe('AdminBrewGuidesService', () => {
     const data = firstData(brewGuide.create);
     expect(data).toMatchObject({ tenantId: 't1', slug: 'prensa-francesa' });
     expect(parseBrewGuideBody(data.body as string).steps).toEqual([
-      { title: 'Moler', body: '', durationSec: 30 },
+      { title: 'Moler', body: '', durationSec: 30, waterG: null },
     ]);
     expect(view).toMatchObject({ difficulty: 'Fácil' });
     expect(view).not.toHaveProperty('tenantId');

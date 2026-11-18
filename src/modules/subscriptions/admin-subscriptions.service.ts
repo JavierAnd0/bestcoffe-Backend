@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService, type SubscriptionChange } from '../mail/mail.service';
 import { SubscriptionLifecycleService } from './subscription-lifecycle.service';
 import { ListSubscriptionsDto } from './dto/list-subscriptions.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
@@ -30,11 +36,18 @@ const SUB_DETAIL_SELECT = {
   },
 } satisfies Prisma.SubscriptionSelect;
 
+type SubDetail = Prisma.SubscriptionGetPayload<{
+  select: typeof SUB_DETAIL_SELECT;
+}>;
+
 @Injectable()
 export class AdminSubscriptionsService {
+  private readonly logger = new Logger(AdminSubscriptionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifecycle: SubscriptionLifecycleService,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
   /** Listado admin con filtros y paginación keyset por nextShipAt/id. */
@@ -87,34 +100,91 @@ export class AdminSubscriptionsService {
   }
 
   /** Pausa una suscripción activa (o en SKIPPED_NEXT / PAYMENT_FAILED). */
-  pause(tenantId: string, id: string) {
-    return this.lifecycle.pause({ id, tenantId }, SUB_DETAIL_SELECT);
+  async pause(tenantId: string, id: string) {
+    const sub = await this.lifecycle.pause({ id, tenantId }, SUB_DETAIL_SELECT);
+    this.notifyCustomer(sub, 'paused');
+    return sub;
   }
 
   /**
    * Reanuda una suscripción pausada. Si la próxima fecha quedó en el pasado,
    * la reprograma a hoy + frecuencia para no disparar un envío inmediato.
    */
-  resume(tenantId: string, id: string) {
-    return this.lifecycle.resume({ id, tenantId }, SUB_DETAIL_SELECT);
+  async resume(tenantId: string, id: string) {
+    const sub = await this.lifecycle.resume(
+      { id, tenantId },
+      SUB_DETAIL_SELECT,
+    );
+    this.notifyCustomer(sub, 'resumed');
+    return sub;
   }
 
   /** Salta el próximo envío: empuja nextShipAt una frecuencia hacia adelante. */
-  skipNext(tenantId: string, id: string) {
-    return this.lifecycle.skipNext({ id, tenantId }, SUB_DETAIL_SELECT);
+  async skipNext(tenantId: string, id: string) {
+    const sub = await this.lifecycle.skipNext(
+      { id, tenantId },
+      SUB_DETAIL_SELECT,
+    );
+    this.notifyCustomer(sub, 'skipped');
+    return sub;
   }
 
   /** Cancela la suscripción (terminal). */
-  cancel(tenantId: string, id: string) {
-    return this.lifecycle.cancel({ id, tenantId }, SUB_DETAIL_SELECT);
+  async cancel(tenantId: string, id: string) {
+    const sub = await this.lifecycle.cancel(
+      { id, tenantId },
+      SUB_DETAIL_SELECT,
+    );
+    this.notifyCustomer(sub, 'cancelled');
+    return sub;
   }
 
   /** Edita frecuencia y/o descuento sin tocar el estado. */
-  update(tenantId: string, id: string, dto: UpdateSubscriptionDto) {
-    return this.lifecycle.updateTerms(
+  async update(tenantId: string, id: string, dto: UpdateSubscriptionDto) {
+    const before =
+      dto.frequencyDays !== undefined
+        ? await this.prisma.subscription.findFirst({
+            where: { id, tenantId },
+            select: { frequencyDays: true },
+          })
+        : null;
+    const sub = await this.lifecycle.updateTerms(
       { id, tenantId },
       { frequencyDays: dto.frequencyDays, discountPct: dto.discountPct },
       SUB_DETAIL_SELECT,
     );
+    // Solo se avisa si la frecuencia cambió de verdad; el descuento es interno.
+    if (before && before.frequencyDays !== sub.frequencyDays) {
+      this.notifyCustomer(sub, 'frequency');
+    }
+    return sub;
+  }
+
+  /**
+   * Avisa por correo al cliente de un cambio hecho desde el panel. No bloquea
+   * la respuesta ni la hace fallar si el correo no sale.
+   */
+  private notifyCustomer(sub: SubDetail, change: SubscriptionChange): void {
+    if (!this.mail || !sub.customer?.email) return;
+    const mail = this.mail;
+    const to = sub.customer.email;
+    void this.prisma.tenant
+      .findUnique({ where: { id: sub.tenantId }, select: { name: true } })
+      .then((tenant) =>
+        mail.sendSubscriptionChanged({
+          to,
+          customerName: sub.customer.name,
+          storeName: tenant?.name ?? 'la tienda',
+          productName: sub.variant.product.name,
+          change,
+          frequencyDays: sub.frequencyDays,
+          nextShipAt: sub.nextShipAt,
+        }),
+      )
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `No se pudo avisar al cliente del cambio (${change}) en la suscripción ${sub.id}: ${String(err)}`,
+        ),
+      );
   }
 }
