@@ -13,14 +13,32 @@ export interface BrewStep {
   title: string;
   body: string;
   durationSec: number;
+  /** Agua acumulada al terminar el paso, en gramos ("vierte hasta 150 g"). */
+  waterG: number | null;
+}
+
+/** Receta base de la guía: lo que el cliente necesita antes de empezar. */
+export interface BrewRecipe {
+  coffeeG: number | null;
+  waterMl: number | null;
+  tempC: number | null;
+  grind: string;
 }
 
 export interface BrewGuideContent {
   summary: string;
   totalTime: string;
   difficulty: BrewDifficulty;
+  recipe: BrewRecipe;
   steps: BrewStep[];
 }
+
+export const EMPTY_RECIPE: BrewRecipe = {
+  coffeeG: null,
+  waterMl: null,
+  tempC: null,
+  grind: '',
+};
 
 export function serializeBrewGuideBody(content: BrewGuideContent): string {
   return JSON.stringify({ v: 1, ...content });
@@ -31,6 +49,7 @@ export function parseBrewGuideBody(body: string | null): BrewGuideContent {
     summary: '',
     totalTime: '',
     difficulty: 'Media',
+    recipe: { ...EMPTY_RECIPE },
     steps: [],
   };
   if (!body) return empty;
@@ -45,6 +64,8 @@ export function parseBrewGuideBody(body: string | null): BrewGuideContent {
   }
   const o = raw as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const num = (v: unknown) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
   const difficulty = BREW_DIFFICULTIES.includes(o.difficulty as BrewDifficulty)
     ? (o.difficulty as BrewDifficulty)
     : 'Media';
@@ -60,12 +81,23 @@ export function parseBrewGuideBody(body: string | null): BrewGuideContent {
             typeof s.durationSec === 'number' && s.durationSec >= 0
               ? Math.round(s.durationSec)
               : 0,
+          waterG: num(s.waterG),
         }))
     : [];
+  const r =
+    o.recipe && typeof o.recipe === 'object' && !Array.isArray(o.recipe)
+      ? (o.recipe as Record<string, unknown>)
+      : {};
   return {
     summary: str(o.summary),
     totalTime: str(o.totalTime),
     difficulty,
+    recipe: {
+      coffeeG: num(r.coffeeG),
+      waterMl: num(r.waterMl),
+      tempC: num(r.tempC),
+      grind: str(r.grind),
+    },
     steps,
   };
 }

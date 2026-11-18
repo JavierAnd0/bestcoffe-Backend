@@ -1,6 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export type SubscriptionChange =
+  'paused' | 'resumed' | 'skipped' | 'cancelled' | 'frequency';
+
+/** Escapa texto que viene de la base (nombres) antes de meterlo en el HTML. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Único punto de envío de correos transaccionales (Resend). Si no hay
  * RESEND_API_KEY configurada, loguea el contenido relevante en vez de fallar,
@@ -266,6 +279,83 @@ export class MailService {
           <p>${greeting}, generamos el pedido <strong>#${shortId}</strong> de tu suscripción a <strong>${opts.productName}</strong> en <strong>${opts.storeName}</strong>.</p>
           <p>Total: <strong>${total}</strong>. El pago se hace igual que en tu primer pedido; despacharemos en cuanto lo confirmemos.</p>
           <p>Puedes pausar, saltar o cancelar tu suscripción desde tu cuenta.</p>
+        </div>
+      `,
+    });
+  }
+
+  /**
+   * Aviso al cliente de un cambio que la tienda hizo en su suscripción desde
+   * el panel (pausa, reanudación, envío saltado, cancelación o frecuencia).
+   */
+  async sendSubscriptionChanged(opts: {
+    to: string;
+    customerName: string | null;
+    storeName: string;
+    productName: string;
+    change: SubscriptionChange;
+    frequencyDays: number;
+    nextShipAt: Date | null;
+  }): Promise<void> {
+    const esc = escapeHtml;
+    const greeting = opts.customerName
+      ? `Hola ${esc(opts.customerName)}`
+      : 'Hola';
+    const store = esc(opts.storeName);
+    const product = esc(opts.productName);
+    const next = opts.nextShipAt
+      ? opts.nextShipAt.toLocaleDateString('es-CO', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'America/Bogota',
+        })
+      : null;
+    const nextLine = next
+      ? `<p>Tu próximo envío queda para el <strong>${next}</strong>.</p>`
+      : '';
+
+    const copy: Record<
+      SubscriptionChange,
+      { subject: string; title: string; body: string }
+    > = {
+      paused: {
+        subject: `Tu suscripción en ${opts.storeName} quedó en pausa`,
+        title: 'Suscripción en pausa',
+        body: `<p>${greeting}, <strong>${store}</strong> pausó tu suscripción a <strong>${product}</strong>. No se generarán envíos mientras siga en pausa.</p>`,
+      },
+      resumed: {
+        subject: `Tu suscripción en ${opts.storeName} está activa de nuevo`,
+        title: 'Suscripción reanudada',
+        body: `<p>${greeting}, <strong>${store}</strong> reanudó tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+      },
+      skipped: {
+        subject: `Saltamos tu próximo envío de ${opts.storeName}`,
+        title: 'Próximo envío saltado',
+        body: `<p>${greeting}, <strong>${store}</strong> saltó el próximo envío de tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+      },
+      cancelled: {
+        subject: `Tu suscripción en ${opts.storeName} fue cancelada`,
+        title: 'Suscripción cancelada',
+        body: `<p>${greeting}, <strong>${store}</strong> canceló tu suscripción a <strong>${product}</strong>. No se generarán más envíos.</p>`,
+      },
+      frequency: {
+        subject: `Cambió la frecuencia de tu suscripción en ${opts.storeName}`,
+        title: 'Nueva frecuencia de envío',
+        body: `<p>${greeting}, <strong>${store}</strong> cambió tu suscripción a <strong>${product}</strong>: ahora recibes un envío <strong>cada ${opts.frequencyDays} días</strong>.</p>${nextLine}`,
+      },
+    };
+    const c = copy[opts.change];
+
+    await this.send({
+      to: opts.to,
+      subject: c.subject,
+      fallbackLog: `Subscription ${opts.change} (${opts.storeName})`,
+      html: `
+        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
+          <h2>${c.title}</h2>
+          ${c.body}
+          <p style="color:#666; font-size:14px;">Si no esperabas este cambio o tienes dudas, escríbele a la tienda.</p>
         </div>
       `,
     });
