@@ -4,6 +4,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
+import type { EpaycoService } from '../epayco/epayco.service';
+
+const epayco = { createSession: jest.fn() };
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import { PurchaseMode } from '../cart/dto/price-cart.dto';
 import { CheckoutService } from './checkout.service';
@@ -87,6 +90,7 @@ describe('CheckoutService · cupones', () => {
       cart as unknown as CartService,
       {} as StripeService,
       {} as MercadoPagoService,
+      epayco as unknown as EpaycoService,
       { get: jest.fn().mockReturnValue(false) } as unknown as ConfigService,
       {
         get: jest.fn().mockResolvedValue({ onlinePayments: false }),
@@ -99,7 +103,16 @@ describe('CheckoutService · cupones', () => {
     items: [{ variantId: 'v1', quantity: 1 }],
     mode: PurchaseMode.ONE_TIME,
     discountCode: 'ONCE',
-    shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+    shippingAddress: {
+      recipientName: 'Ana Pérez',
+      line1: 'Calle 1',
+      line2: 'Apto 101',
+      city: 'Bogotá',
+      state: 'Cundinamarca',
+      postalCode: '110111',
+      country: 'CO',
+      phone: '3001234567',
+    },
   } as never;
 
   it('un invitado se cotiza sin cliente (el cupón de un solo uso lo rechaza la validación)', async () => {

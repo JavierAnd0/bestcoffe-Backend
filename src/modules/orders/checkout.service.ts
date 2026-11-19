@@ -14,6 +14,7 @@ import { TenantFeaturesService } from '../../common/features/tenant-features.ser
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
+import { EpaycoService } from '../epayco/epayco.service';
 import {
   DEFAULT_SUBSCRIPTION_FREQUENCY_DAYS,
   type CreateGuestOrderDto,
@@ -37,6 +38,7 @@ export class CheckoutService {
     private readonly cart: CartService,
     private readonly stripe: StripeService,
     private readonly mercadopago: MercadoPagoService,
+    private readonly epayco: EpaycoService,
     private readonly config: ConfigService,
     private readonly features: TenantFeaturesService,
   ) {}
@@ -94,7 +96,11 @@ export class CheckoutService {
   ) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({
       where: { id: tenantId },
-      select: { paymentProvider: true, mpConnected: true },
+      select: {
+        paymentProvider: true,
+        mpConnected: true,
+        epaycoConnected: true,
+      },
     });
 
     // Pedido por suscripción: exige cuenta, la capacidad del plan y que cada
@@ -246,7 +252,9 @@ export class CheckoutService {
     const noGateway =
       tenant.paymentProvider === 'MERCADOPAGO'
         ? !tenant.mpConnected
-        : !stripeAllowed;
+        : tenant.paymentProvider === 'EPAYCO'
+          ? !tenant.epaycoConnected
+          : !stripeAllowed;
     if (!onlinePayments || noGateway) {
       return {
         orderId: order.id,
@@ -287,6 +295,40 @@ export class CheckoutService {
         if (err instanceof HttpException) throw err;
         throw new BadGatewayException(
           'No se pudo iniciar el pago con MercadoPago. Intenta nuevamente.',
+        );
+      }
+    }
+
+    // ePayco: Checkout v2. Se crea la sesión con las llaves de la tienda y el
+    // front abre la pasarela con `checkout-v2.js`; el pedido queda pendiente
+    // hasta la confirmación (aviso de ePayco o sync al volver).
+    if (tenant.paymentProvider === 'EPAYCO') {
+      try {
+        const session = await this.epayco.createSession(order.id, {
+          returnOrigin: dto.returnOrigin,
+          payerDocument: dto.payerDocument,
+        });
+        return {
+          orderId: order.id,
+          provider: 'EPAYCO' as const,
+          paymentStatus: 'PENDING' as const,
+          epaycoSessionId: session.sessionId,
+          epaycoTest: session.test,
+          totalCents: order.totalCents,
+          summary,
+        };
+      } catch (err) {
+        this.logger.error(
+          `Fallo al crear la sesión de ePayco para orden ${order.id}`,
+          err,
+        );
+        await this.markOrderFailed(
+          order.id,
+          'Fallo al crear la sesión de ePayco',
+        );
+        if (err instanceof HttpException) throw err;
+        throw new BadGatewayException(
+          'No se pudo iniciar el pago con ePayco. Intenta nuevamente.',
         );
       }
     }

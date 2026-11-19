@@ -32,6 +32,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { MercadoPagoModule } from './modules/mercadopago/mercadopago.module';
+import { EpaycoModule } from './modules/epayco/epayco.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { InngestModule } from './modules/inngest/inngest.module';
 import { DiscoveryModule } from './modules/discovery/discovery.module';
@@ -120,6 +121,7 @@ import { LOG_REDACT } from './common/logging/redact';
     PromotionsModule,
     StripeModule,
     MercadoPagoModule,
+    EpaycoModule,
     AuditModule,
     InngestModule,
     DiscoveryModule,

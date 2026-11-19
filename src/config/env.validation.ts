@@ -49,6 +49,9 @@ export const envValidationSchema = Joi.object({
   MP_REDIRECT_URI: Joi.string().uri().allow('').optional(),
   MP_MARKETPLACE_FEE_PCT: Joi.number().min(0).max(100).optional(),
 
+  // ePayco — las llaves son de cada tienda; aquí solo la URL del aviso.
+  EPAYCO_CONFIRMATION_URL: Joi.string().uri().allow('').optional(),
+
   RESEND_API_KEY: Joi.string().allow('').optional(),
   EMAIL_FROM: Joi.string().allow('').optional(),
   BLOB_READ_WRITE_TOKEN: Joi.string().allow('').optional(),

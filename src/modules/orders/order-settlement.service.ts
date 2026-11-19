@@ -20,6 +20,12 @@ export type PaymentSettlementEvent =
       eventType: string;
       mpPaymentId: string;
     }
+  | {
+      provider: 'EPAYCO';
+      eventId: string;
+      eventType: string;
+      epaycoRef: string;
+    }
   // Pago confirmado a mano por el operador (transferencia / contra entrega).
   // No hay evento de pasarela: la idempotencia la da el estado PAID del pedido.
   | { provider: 'MANUAL' };
@@ -58,6 +64,10 @@ export class OrderSettlementService {
           await tx.stripeEvent.create({
             data: { id: settlement.eventId, type: settlement.eventType },
           });
+        } else if (settlement.provider === 'EPAYCO') {
+          await tx.epaycoEvent.create({
+            data: { id: settlement.eventId, type: settlement.eventType },
+          });
         } else {
           await tx.mercadoPagoEvent.create({
             data: { id: settlement.eventId, type: settlement.eventType },
@@ -88,6 +98,9 @@ export class OrderSettlementService {
           }),
           ...(settlement.provider === 'MERCADOPAGO' && {
             mpPaymentId: settlement.mpPaymentId,
+          }),
+          ...(settlement.provider === 'EPAYCO' && {
+            epaycoRef: settlement.epaycoRef,
           }),
         },
       });

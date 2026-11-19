@@ -103,6 +103,7 @@ enum PaymentStatus {
 enum PaymentProvider {
   STRIPE
   MERCADOPAGO
+  EPAYCO
 }
 
 enum SubStatus {
@@ -187,6 +188,17 @@ model Tenant {
   mpPublicKey      String? // se expone al frontend para tokenizar la tarjeta
   mpTokenExpiresAt DateTime?
   mpConnected      Boolean   @default(false)
+
+  // ePayco (DaviPay) — no tiene OAuth: el dueño pega las llaves de su panel
+  // (Configuración → Personalizaciones → Llaves secretas). P_KEY y la llave
+  // privada se guardan cifradas (secret-box); el Customer ID y la llave pública
+  // no son secretos. `epaycoTest` usa el entorno de pruebas de ePayco.
+  epaycoCustomerId String?
+  epaycoPKey       String?
+  epaycoPublicKey  String?
+  epaycoPrivateKey String?
+  epaycoTest       Boolean @default(true)
+  epaycoConnected  Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -464,6 +476,7 @@ model Order {
 
   stripePaymentIntentId String?
   mpPaymentId           String?
+  epaycoRef             String? // ref_payco de la transacción de ePayco
   subscriptionId        String?
 
   createdAt DateTime @default(now())
@@ -704,6 +717,12 @@ model StripeEvent {
 
 model MercadoPagoEvent {
   id          String   @id // id de la notificación (data.id) de MercadoPago
+  type        String
+  processedAt DateTime @default(now())
+}
+
+model EpaycoEvent {
+  id          String   @id // x_transaction_id de ePayco
   type        String
   processedAt DateTime @default(now())
 }

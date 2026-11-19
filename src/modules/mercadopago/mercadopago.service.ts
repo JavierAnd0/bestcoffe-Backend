@@ -12,6 +12,7 @@ import { PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveSecretBoxKey, open, seal } from '../../common/crypto/secret-box';
 import { OrderSettlementService } from '../orders/order-settlement.service';
+import { checkoutReturnBase } from '../../common/checkout/return-url';
 
 // El SDK de MercadoPago no tipa estos retornos de forma cómoda; declaramos lo
 // mínimo que consumimos y casteamos con `as unknown as`.
@@ -30,17 +31,6 @@ type MpPaymentResult = {
 };
 
 type MpPreferenceResult = { id: string; init_point: string };
-
-/** Origen (`https://host[:puerto]`) de una URL http(s), o null si no lo es. */
-function safeOrigin(raw: string): string | null {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-    return u.origin;
-  } catch {
-    return null;
-  }
-}
 
 type TenantMpCreds = {
   id: string;
@@ -335,35 +325,14 @@ export class MercadoPagoService {
     return { paymentStatus: o?.paymentStatus ?? null, mpStatus };
   }
 
-  /**
-   * Base de la URL de regreso a la confirmación. Solo se acepta un origen que
-   * sea la web de la plataforma o un dominio verificado de la tienda; en otro
-   * caso se usa la web de la plataforma.
-   */
-  private async returnBase(
-    tenantId: string,
-    orderId: string,
-    requested?: string,
-  ): Promise<string> {
-    const webUrl = this.config.get<string>('webAppUrl') ?? '';
-    let origin = safeOrigin(webUrl) ?? '';
-    const asked = requested ? safeOrigin(requested) : null;
-    if (asked && asked !== origin) {
-      const host = new URL(asked).hostname;
-      const isLocal =
-        this.config.get<string>('nodeEnv') !== 'production' &&
-        (host === 'localhost' ||
-          host === '127.0.0.1' ||
-          host.endsWith('.localhost'));
-      const domain = isLocal
-        ? null
-        : await this.prisma.tenantDomain.findFirst({
-            where: { tenantId, domain: host, verified: true },
-            select: { id: true },
-          });
-      if (isLocal || domain) origin = asked;
-    }
-    return `${origin}/checkout/confirmacion?orderId=${encodeURIComponent(orderId)}`;
+  private returnBase(tenantId: string, orderId: string, requested?: string) {
+    return checkoutReturnBase(
+      this.prisma,
+      this.config,
+      tenantId,
+      orderId,
+      requested,
+    );
   }
 
   // ─── Webhook ────────────────────────────────────────────────────────────────
