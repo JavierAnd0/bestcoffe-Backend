@@ -5,6 +5,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CartService } from '../cart/cart.service';
 import { StripeService } from '../stripe/stripe.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
+import type { EpaycoService } from '../epayco/epayco.service';
+
+const epayco = { createSession: jest.fn() };
 import { PurchaseMode } from '../cart/dto/price-cart.dto';
 import { TenantFeaturesService } from '../../common/features/tenant-features.service';
 import type { CreateGuestOrderDto } from './dto/create-order.dto';
@@ -27,7 +30,16 @@ describe('CheckoutService.createGuest', () => {
     name: 'Ana Pérez',
     items: [{ variantId: 'v1', quantity: 1 }],
     mode: PurchaseMode.ONE_TIME,
-    shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+    shippingAddress: {
+      recipientName: 'Ana Pérez',
+      line1: 'Calle 1',
+      line2: 'Apto 101',
+      city: 'Bogotá',
+      state: 'Cundinamarca',
+      postalCode: '110111',
+      country: 'CO',
+      phone: '3001234567',
+    },
     ...over,
   });
 
@@ -44,6 +56,7 @@ describe('CheckoutService.createGuest', () => {
       {} as CartService,
       {} as StripeService,
       {} as MercadoPagoService,
+      epayco as unknown as EpaycoService,
       {} as ConfigService,
       {} as TenantFeaturesService,
     );
@@ -176,6 +189,7 @@ describe('CheckoutService.create sin pagos en línea', () => {
       { price: jest.fn().mockResolvedValue(priced) } as unknown as CartService,
       stripe as unknown as StripeService,
       mercadopago as unknown as MercadoPagoService,
+      epayco as unknown as EpaycoService,
       {
         get: jest.fn().mockReturnValue(stripeEnabled),
       } as unknown as ConfigService,
@@ -189,7 +203,16 @@ describe('CheckoutService.create sin pagos en línea', () => {
   const dto = {
     items: [{ variantId: 'v1', quantity: 1 }],
     mode: PurchaseMode.ONE_TIME,
-    shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+    shippingAddress: {
+      recipientName: 'Ana Pérez',
+      line1: 'Calle 1',
+      line2: 'Apto 101',
+      city: 'Bogotá',
+      state: 'Cundinamarca',
+      postalCode: '110111',
+      country: 'CO',
+      phone: '3001234567',
+    },
   } as never;
 
   it('crea el pedido pendiente y no llama a ninguna pasarela', async () => {
@@ -274,6 +297,7 @@ describe('CheckoutService.create · total cero', () => {
       cart as unknown as CartService,
       {} as StripeService,
       {} as MercadoPagoService,
+      epayco as unknown as EpaycoService,
       {} as ConfigService,
       {} as TenantFeaturesService,
     );
@@ -281,7 +305,16 @@ describe('CheckoutService.create · total cero', () => {
     await expect(
       service.create('t1', 'cust-1', {
         items: [{ variantId: 'v1', quantity: 1 }],
-        shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+        shippingAddress: {
+          recipientName: 'Ana Pérez',
+          line1: 'Calle 1',
+          line2: 'Apto 101',
+          city: 'Bogotá',
+          state: 'Cundinamarca',
+          postalCode: '110111',
+          country: 'CO',
+          phone: '3001234567',
+        },
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -358,6 +391,7 @@ describe('CheckoutService.create · suscripción', () => {
       cart as unknown as CartService,
       {} as StripeService,
       {} as MercadoPagoService,
+      epayco as unknown as EpaycoService,
       { get: jest.fn().mockReturnValue(false) } as unknown as ConfigService,
       {
         get: jest.fn().mockResolvedValue({
@@ -374,7 +408,16 @@ describe('CheckoutService.create · suscripción', () => {
       items: [{ variantId: 'v1', quantity: 1 }],
       mode: PurchaseMode.SUBSCRIPTION,
       frequencyDays: 21,
-      shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+      shippingAddress: {
+        recipientName: 'Ana Pérez',
+        line1: 'Calle 1',
+        line2: 'Apto 101',
+        city: 'Bogotá',
+        state: 'Cundinamarca',
+        postalCode: '110111',
+        country: 'CO',
+        phone: '3001234567',
+      },
       ...over,
     }) as never;
 
@@ -393,7 +436,16 @@ describe('CheckoutService.create · suscripción', () => {
       frequencyDays: 21,
       status: 'PAYMENT_FAILED',
       lastShippedAt: null,
-      shippingAddress: { line1: 'Calle 1', city: 'Bogotá', country: 'CO' },
+      shippingAddress: {
+        recipientName: 'Ana Pérez',
+        line1: 'Calle 1',
+        line2: 'Apto 101',
+        city: 'Bogotá',
+        state: 'Cundinamarca',
+        postalCode: '110111',
+        country: 'CO',
+        phone: '3001234567',
+      },
     });
     expect(tx.order.create).toHaveBeenCalledWith(
       expect.objectContaining({

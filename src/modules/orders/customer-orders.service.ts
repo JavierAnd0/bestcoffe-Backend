@@ -84,8 +84,19 @@ export class CustomerOrdersService {
       : [];
     const byId = new Map(variants.map((v) => [v.id, v.product]));
 
+    // Lo interno de la tienda no sale hacia el cliente: sus notas sobre el
+    // pedido y los identificadores de las pasarelas.
+    /* eslint-disable @typescript-eslint/no-unused-vars */
+    const {
+      internalNotes,
+      stripePaymentIntentId,
+      mpPaymentId,
+      epaycoRef,
+      ...publicOrder
+    } = order;
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     return {
-      ...order,
+      ...publicOrder,
       items: order.items.map(({ variantId, ...item }) => {
         const product = byId.get(variantId);
         return {

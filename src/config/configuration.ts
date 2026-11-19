@@ -29,6 +29,9 @@ export interface AppConfig {
     redirectUri: string;
     marketplaceFeePct: number;
   };
+  epayco: {
+    confirmationUrl: string;
+  };
   resend: {
     apiKey: string;
     from: string;
@@ -86,6 +89,13 @@ export default (): AppConfig => ({
     webhookSecret: process.env.MP_WEBHOOK_SECRET ?? '',
     redirectUri: process.env.MP_REDIRECT_URI ?? '',
     marketplaceFeePct: parseFloat(process.env.MP_MARKETPLACE_FEE_PCT ?? '0'),
+  },
+  epayco: {
+    // URL pública del aviso servidor a servidor de ePayco
+    // (https://<api>/v1/epayco/confirmation). Sin ella, el pedido se confirma
+    // al volver el comprador (sync) o con la URL configurada en el panel de
+    // ePayco. Las llaves NO van aquí: cada tienda pega las suyas.
+    confirmationUrl: process.env.EPAYCO_CONFIRMATION_URL ?? '',
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY ?? '',

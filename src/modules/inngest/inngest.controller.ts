@@ -10,6 +10,8 @@ import { MailService } from '../mail/mail.service';
 import { SubscriptionRenewalService } from '../subscriptions/subscription-renewal.service';
 import { createRenewSubscriptionsFunction } from './subscriptions-inngest';
 import { createOrderConfirmationFunction } from './order-confirmation-inngest';
+import { createReconcileEpaycoFunction } from './epayco-inngest';
+import { EpaycoService } from '../epayco/epayco.service';
 
 @ApiExcludeController()
 @SkipThrottle()
@@ -21,6 +23,7 @@ export class InngestController {
     renewalService: SubscriptionRenewalService,
     prisma: PrismaService,
     mail: MailService,
+    epayco: EpaycoService,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     this.handler = serve({
@@ -28,6 +31,7 @@ export class InngestController {
       functions: [
         createRenewSubscriptionsFunction(renewalService),
         createOrderConfirmationFunction(prisma, mail),
+        createReconcileEpaycoFunction(epayco),
       ],
     });
   }

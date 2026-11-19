@@ -27,6 +27,8 @@ export class TenantsService {
         // MercadoPago, la public key del vendedor para tokenizar la tarjeta.
         paymentProvider: true,
         mpPublicKey: true,
+        // ePayco: solo si está conectada (las llaves nunca salen de aquí).
+        epaycoConnected: true,
       },
     });
     if (!tenant) throw new NotFoundException('Tenant no encontrado');
