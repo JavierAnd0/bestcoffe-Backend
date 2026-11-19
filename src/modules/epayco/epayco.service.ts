@@ -329,10 +329,16 @@ export class EpaycoService {
     }>('/payment/session/create', token, body);
     const sessionId = res.data?.sessionId;
     if (!sessionId) {
+      const safeDetails = {
+        hasData: Boolean(res?.data),
+        hasSessionId: Boolean(res?.data?.sessionId),
+        textResponse:
+          typeof res?.textResponse === 'string'
+            ? res.textResponse.slice(0, 300)
+            : undefined,
+      };
       this.logger.error(
-        // La respuesta completa trae el detalle de los campos rechazados
-        // (no contiene llaves ni datos de tarjeta).
-        `ePayco no creó la sesión del pedido ${orderId}: ${JSON.stringify(res).slice(0, 1500)}`,
+        `ePayco no creó la sesión del pedido ${orderId}: ${JSON.stringify(safeDetails)}`,
       );
       throw new BadGatewayException(
         'No se pudo iniciar el pago con ePayco. Intenta nuevamente.',
