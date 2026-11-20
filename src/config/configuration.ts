@@ -105,7 +105,7 @@ export default (): AppConfig => ({
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY ?? '',
-    from: process.env.EMAIL_FROM ?? 'BestCoffee <hola@bestcoffee.io>',
+    from: process.env.EMAIL_FROM ?? 'Bestkofi <hola@bestcoffee.io>',
   },
   blob: {
     token: process.env.BLOB_READ_WRITE_TOKEN ?? '',

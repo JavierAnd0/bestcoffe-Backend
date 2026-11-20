@@ -1,7 +1,7 @@
 {
   "name": "bestcoffe-api",
   "version": "0.0.1",
-  "description": "BestCoffee multi-tenant SaaS API (NestJS + Prisma)",
+  "description": "Bestkofi multi-tenant SaaS API (NestJS + Prisma)",
   "author": "",
   "private": true,
   "engines": {

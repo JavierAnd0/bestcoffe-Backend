@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ShipmentStatus } from '@prisma/client';
 
 /**
- * Traducción de los estados de Envia.com a los de BestCoffee y verificación de
+ * Traducción de los estados de Envia.com a los de Bestkofi y verificación de
  * la firma de sus webhooks. Funciones puras: se prueban sin red ni base.
  */
 

@@ -1,4 +1,4 @@
-// BestCoffee API — multi-tenant SaaS de café de especialidad
+// Bestkofi API — multi-tenant SaaS de café de especialidad
 // Prisma 7 (driver adapter + prisma.config.ts; sin url en datasource)
 
 generator client {

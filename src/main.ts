@@ -163,7 +163,7 @@ async function bootstrap() {
   // En producción se oculta por defecto salvo que ENABLE_SWAGGER=1.
   if (!isProd || process.env.ENABLE_SWAGGER === '1') {
     const config = new DocumentBuilder()
-      .setTitle('BestCoffee API')
+      .setTitle('Bestkofi API')
       .setDescription('API multi-tenant de la plataforma SaaS de café')
       .setVersion('1.0')
       .addBearerAuth()

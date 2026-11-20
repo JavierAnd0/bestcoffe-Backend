@@ -58,10 +58,10 @@ describe('TOTP (RFC 6238)', () => {
   });
 
   it('la URI lleva emisor, cuenta y secreto', () => {
-    const uri = totpUri('ABC234', 'ana@cafe.co', 'BestCoffee');
-    expect(uri).toMatch(/^otpauth:\/\/totp\/BestCoffee%3Aana%40cafe\.co\?/);
+    const uri = totpUri('ABC234', 'ana@cafe.co', 'Bestkofi');
+    expect(uri).toMatch(/^otpauth:\/\/totp\/Bestkofi%3Aana%40cafe\.co\?/);
     expect(uri).toContain('secret=ABC234');
-    expect(uri).toContain('issuer=BestCoffee');
+    expect(uri).toContain('issuer=Bestkofi');
   });
 
   it('códigos de respaldo: 10 distintos y su hash ignora guion y mayúsculas', () => {
