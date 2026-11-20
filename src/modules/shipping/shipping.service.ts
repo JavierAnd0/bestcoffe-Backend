@@ -533,9 +533,9 @@ export class ShippingService {
       where: { id: orderId },
       select: {
         id: true,
+        tenantId: true,
         trackingUrl: true,
         customer: { select: { email: true, name: true } },
-        tenant: { select: { name: true } },
       },
     });
     if (!order?.customer?.email) return;
@@ -544,7 +544,7 @@ export class ShippingService {
         to: order.customer.email,
         customerName: order.customer.name,
         orderId: order.id,
-        storeName: order.tenant.name,
+        tenantId: order.tenantId,
         trackingUrl: order.trackingUrl,
       })
       .catch((err: unknown) =>

@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { OperatorRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { storeUrl } from '../../common/urls/store-url';
 import { MailService } from '../mail/mail.service';
 import { AddMemberDto, UpdateMemberRoleDto } from './dto/member.dto';
 
@@ -168,9 +169,9 @@ export class MembersService {
         return mail.sendMemberInvitation({
           to: email,
           name,
-          storeName: tenant.name,
+          tenantId,
           roleLabel: ROLE_LABELS[role] ?? role,
-          accessUrl: `${this.storeUrl(tenant.slug)}/acceso?email=${encodeURIComponent(email)}`,
+          accessUrl: `${storeUrl(tenant.slug, this.config)}/acceso?email=${encodeURIComponent(email)}`,
         });
       })
       .catch((err: unknown) =>
@@ -178,17 +179,6 @@ export class MembersService {
           `No se pudo enviar la invitación a ${email}: ${String(err)}`,
         ),
       );
-  }
-
-  /** URL de la tienda: <slug>.<PLATFORM_DOMAIN> si está definido; si no, WEB_APP_URL. */
-  private storeUrl(slug: string): string {
-    const domain = process.env.PLATFORM_DOMAIN?.trim();
-    if (domain) return `https://${slug}.${domain}`;
-    return (
-      this.config?.get<string>('webAppUrl') ??
-      process.env.WEB_APP_URL ??
-      'http://localhost:3000'
-    ).replace(/\/$/, '');
   }
 }
 

@@ -1,5 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
+import { platformUrl, storeUrl } from '../../common/urls/store-url';
+import {
+  MailBrand,
+  PLATFORM_NAME,
+  p,
+  receipt,
+  renderEmail,
+  strong,
+} from './layout';
 
 export type SubscriptionChange =
   'paused' | 'resumed' | 'skipped' | 'cancelled' | 'frequency';
@@ -41,21 +51,87 @@ export function safeHref(url: string | null | undefined): string | null {
   }
 }
 
+const money = (cents: number) => `$${(cents / 100).toLocaleString('es-CO')}`;
+const shortId = (orderId: string) => orderId.slice(-6).toUpperCase();
+/** Fecha corta en hora de Colombia: "20 nov. 2026". */
+const shortDate = (d: Date) =>
+  d.toLocaleDateString('es-CO', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'America/Bogota',
+  });
+
+/** Nombre apto para la cabecera From (sin comillas, <> ni saltos de línea). */
+function displayName(name: string): string {
+  return name.replace(/["<>\r\n\\]/g, '').trim() || PLATFORM_NAME;
+}
+
+const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i;
+const BRAND_TTL_MS = 5 * 60_000;
+
 /**
  * Único punto de envío de correos transaccionales (Resend). Si no hay
  * RESEND_API_KEY configurada, loguea el contenido relevante en vez de fallar,
  * para que dev/staging funcionen sin proveedor de email.
+ *
+ * Los correos de una tienda salen con su nombre como remitente
+ * ("ORÍGEN <hola@bestkofi.com>"), su logo y color, y responden a su correo de
+ * contacto. Los de la plataforma (bienvenida, comisión) salen como Bestkofi.
  */
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  private readonly brandCache = new Map<
+    string,
+    { brand: MailBrand; exp: number }
+  >();
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
+
+  /** Marca de la plataforma. */
+  platformBrand(): MailBrand {
+    return {
+      name: PLATFORM_NAME,
+      url: platformUrl(this.config),
+      replyTo: this.config.get<string>('platformContactEmail') || null,
+    };
+  }
+
+  /** Marca de una tienda (nombre, web, logo, color, contacto). */
+  async brandFor(tenantId: string | null | undefined): Promise<MailBrand> {
+    if (!tenantId || !this.prisma) return this.platformBrand();
+    const hit = this.brandCache.get(tenantId);
+    if (hit && hit.exp > Date.now()) return hit.brand;
+
+    const t = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, slug: true, branding: true },
+    });
+    if (!t) return this.platformBrand();
+    const b = (t.branding ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : null);
+    const brand: MailBrand = {
+      name: t.name,
+      url: storeUrl(t.slug, this.config),
+      logoUrl: str(b.logoUrl),
+      primary: str(b.primary),
+      accent: str(b.accent),
+      city: str(b.city),
+      replyTo: str(b.contactEmail),
+    };
+    this.brandCache.set(tenantId, { brand, exp: Date.now() + BRAND_TTL_MS });
+    return brand;
+  }
 
   private async send(opts: {
     to: string;
     subject: string;
     html: string;
+    brand: MailBrand;
     /** Qué loguear si no hay API key (incluye el link accionable). */
     fallbackLog: string;
   }): Promise<void> {
@@ -70,14 +146,23 @@ export class MailService {
     // Import dinámico: no falla el boot si el paquete/clave no están presentes.
     const { Resend } = await import('resend');
     const resend = new Resend(apiKey);
-    const from =
+    // EMAIL_FROM fija la dirección (dominio verificado en Resend); el nombre
+    // visible es el de la tienda o el de la plataforma.
+    const configured =
       this.config.get<string>('resend.from') ?? 'noreply@example.com';
+    const address = /<([^>]+)>/.exec(configured)?.[1] ?? configured.trim();
+    const from = `"${displayName(opts.brand.name)}" <${address}>`;
+    const replyTo =
+      opts.brand.replyTo && EMAIL_RE.test(opts.brand.replyTo)
+        ? opts.brand.replyTo
+        : undefined;
 
     const { data, error } = await resend.emails.send({
       from,
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
+      ...(replyTo && { replyTo }),
     });
 
     if (error) {
@@ -92,24 +177,34 @@ export class MailService {
     }
   }
 
-  /** Magic link de acceso para operadores (panel admin / superadmin). */
+  /**
+   * Magic link de acceso para operadores. Con `tenantId` sale con la marca de
+   * esa tienda; sin él (dueño de la plataforma), con la de la plataforma.
+   */
   async sendOperatorMagicLink(
     to: string,
     name: string | null,
     link: string,
+    tenantId?: string | null,
   ): Promise<void> {
-    const hello = greeting(name);
+    const brand = await this.brandFor(tenantId);
     await this.send({
       to,
-      subject: 'Tu enlace de acceso',
+      brand,
+      subject: `Tu acceso al panel de ${brand.name}`,
       fallbackLog: `Magic link for ${to}: ${link}`,
-      html: `
-        <p>${hello},</p>
-        <p>Haz clic en el siguiente enlace para acceder a tu panel.
-           El enlace vence en 15 minutos y solo puede usarse una vez.</p>
-        <p><a href="${safeHref(link) ?? '#'}">Acceder al panel</a></p>
-        <p>Si no solicitaste este acceso, ignora este mensaje.</p>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: 'Entra con un clic. El enlace vence en 15 minutos.',
+        kicker: 'Acceso al panel',
+        heading: name ? `Hola, ${name}` : 'Hola',
+        body: p(
+          `Aquí tienes tu enlace para entrar al panel de ${strong(brand.name)}. Sin contraseñas: un clic y estás dentro.`,
+        ),
+        cta: { label: 'Entrar al panel', href: safeHref(link) ?? '#' },
+        signoff: false,
+        note: 'El enlace vence en 15 minutos y sirve una sola vez. Si no lo pediste, ignora este correo.',
+      }),
     });
   }
 
@@ -118,19 +213,25 @@ export class MailService {
     to: string,
     name: string | null | undefined,
     link: string,
+    tenantId?: string | null,
   ): Promise<void> {
-    const hello = greeting(name);
+    const brand = await this.brandFor(tenantId);
     await this.send({
       to,
-      subject: 'Activa tu cuenta',
+      brand,
+      subject: `Confirma tu correo en ${brand.name}`,
       fallbackLog: `Verify link for ${to}: ${link}`,
-      html: `
-        <p>${hello},</p>
-        <p>Haz clic en el siguiente enlace para verificar tu correo.
-           El enlace vence en 24 horas.</p>
-        <p><a href="${safeHref(link) ?? '#'}">Verificar mi correo</a></p>
-        <p>Si no creaste esta cuenta, ignora este mensaje.</p>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: 'Un clic para activar tu cuenta.',
+        kicker: 'Bienvenida',
+        heading: name ? `Hola, ${name}` : 'Te damos la bienvenida',
+        body: p(
+          `Gracias por crear tu cuenta en ${strong(brand.name)}. Confirma tu correo y listo: podrás seguir tus pedidos y manejar tus suscripciones.`,
+        ),
+        cta: { label: 'Confirmar mi correo', href: safeHref(link) ?? '#' },
+        note: 'El enlace vence en 24 horas. Si no creaste esta cuenta, ignora este mensaje.',
+      }),
     });
   }
 
@@ -139,26 +240,31 @@ export class MailService {
     to: string,
     name: string | null | undefined,
     link: string,
+    tenantId?: string | null,
   ): Promise<void> {
-    const hello = greeting(name);
+    const brand = await this.brandFor(tenantId);
     await this.send({
       to,
-      subject: 'Restablece tu contraseña',
+      brand,
+      subject: `Restablece tu contraseña de ${brand.name}`,
       fallbackLog: `Password reset link for ${to}: ${link}`,
-      html: `
-        <p>${hello},</p>
-        <p>Recibimos una solicitud para restablecer tu contraseña.
-           Haz clic en el siguiente enlace para elegir una nueva clave.
-           El enlace vence en 1 hora y solo puede usarse una vez.</p>
-        <p><a href="${safeHref(link) ?? '#'}">Restablecer mi contraseña</a></p>
-        <p>Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: 'Elige una contraseña nueva. El enlace vence en 1 hora.',
+        kicker: 'Tu cuenta',
+        heading: 'Elige una contraseña nueva',
+        body: p(
+          `${greeting(name)}, recibimos una solicitud para cambiar la contraseña de tu cuenta en ${strong(brand.name)}.`,
+        ),
+        cta: { label: 'Cambiar contraseña', href: safeHref(link) ?? '#' },
+        note: 'El enlace vence en 1 hora y sirve una sola vez. Si no pediste el cambio, tu contraseña sigue igual.',
+      }),
     });
   }
 
   /**
    * Propuesta de cambio de comisión: el dueño del tenant debe aceptarla en su
-   * panel antes de que entre en vigor.
+   * panel antes de que entre en vigor. Correo de la plataforma.
    */
   async sendCommissionChangeProposal(
     to: string,
@@ -167,20 +273,27 @@ export class MailService {
     newPct: number,
     panelUrl: string,
   ): Promise<void> {
+    const brand = this.platformBrand();
     await this.send({
       to,
-      subject: `Cambio en tu comisión — ${storeName}`,
+      brand,
+      subject: `Propuesta de cambio de comisión para ${storeName}`,
       fallbackLog: `Commission proposal ${to} (${storeName}): ${oldPct}% → ${newPct}%. Panel: ${panelUrl}`,
-      html: `
-        <p>Hola,</p>
-        <p>Proponemos ajustar la comisión por ventas de tu tienda
-           <strong>${esc(storeName)}</strong>:</p>
-        <p style="font-size:18px"><strong>${oldPct}% → ${newPct}%</strong></p>
-        <p>Este cambio <strong>no aplica</strong> hasta que lo apruebes. Entra a tu
-           panel para revisarlo y aceptarlo o rechazarlo.</p>
-        <p><a href="${safeHref(panelUrl) ?? '#'}">Revisar en mi panel</a></p>
-        <p>Si no reconoces esta solicitud, ignórala: tu comisión actual seguirá vigente.</p>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: `${oldPct}% → ${newPct}%. No aplica hasta que lo apruebes.`,
+        kicker: storeName,
+        heading: 'Propuesta de nueva comisión',
+        facts: [
+          { label: 'Actual', value: `${oldPct}%` },
+          { label: 'Propuesta', value: `${newPct}%` },
+        ],
+        body: p(
+          'El cambio <strong>no aplica</strong> hasta que lo apruebes desde tu panel, donde puedes aceptarlo o rechazarlo.',
+        ),
+        cta: { label: 'Revisar propuesta', href: safeHref(panelUrl) ?? '#' },
+        note: 'Si no reconoces esta solicitud, ignórala: tu comisión actual sigue vigente.',
+      }),
     });
   }
 
@@ -189,7 +302,7 @@ export class MailService {
     to: string;
     customerName: string | null;
     orderId: string;
-    storeName: string;
+    tenantId: string;
     totalCents: number;
     items: Array<{
       productName: string;
@@ -198,57 +311,40 @@ export class MailService {
       lineCents: number;
     }>;
   }): Promise<void> {
-    const hello = greeting(opts.customerName);
-    const itemsHtml = opts.items
-      .map(
-        (it) => `
-        <tr>
-          <td style="padding:8px; border-bottom:1px solid #eee;">
-            <strong>${esc(it.productName)}</strong><br/>
-            <small style="color:#666;">${esc(it.variantName)}</small>
-          </td>
-          <td style="padding:8px; border-bottom:1px solid #eee; text-align:center;">${it.quantity}</td>
-          <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">$${(it.lineCents / 100).toLocaleString('es-CO')}</td>
-        </tr>`,
-      )
-      .join('');
-
-    const formattedTotal = `$${(opts.totalCents / 100).toLocaleString('es-CO')}`;
+    const brand = await this.brandFor(opts.tenantId);
+    const id = shortId(opts.orderId);
 
     await this.send({
       to: opts.to,
-      subject: `¡Confirmación de compra en ${opts.storeName}! (Orden #${opts.orderId.slice(-6).toUpperCase()})`,
-      fallbackLog: `Order confirmation for ${opts.to} (Order: ${opts.orderId}, Store: ${opts.storeName}, Total: ${formattedTotal})`,
-      html: `
-        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
-          <h2>¡Gracias por tu compra!</h2>
-          <p>${hello}, hemos recibido tu pedido en <strong>${esc(opts.storeName)}</strong> y ya lo estamos preparando.</p>
-          <p><strong>Número de pedido:</strong> #${opts.orderId.slice(-6).toUpperCase()}</p>
-          
-          <table style="width:100%; border-collapse:collapse; margin-top:20px; font-size:14px;">
-            <thead>
-              <tr style="background:#f9f9f9; text-align:left;">
-                <th style="padding:8px; border-bottom:2px solid #ddd;">Producto</th>
-                <th style="padding:8px; border-bottom:2px solid #ddd; text-align:center;">Cant.</th>
-                <th style="padding:8px; border-bottom:2px solid #ddd; text-align:right;">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="2" style="padding:12px 8px; font-weight:bold; text-align:right;">Total pagado:</td>
-                <td style="padding:12px 8px; font-weight:bold; text-align:right;">${formattedTotal}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          <p style="margin-top:24px; font-size:13px; color:#777;">
-            Te notificaremos en cuanto tu paquete sea despachado con la información de rastreo.
-          </p>
-        </div>
-      `,
+      brand,
+      subject: `Recibimos tu pedido #${id}`,
+      fallbackLog: `Order confirmation for ${opts.to} (Order: ${opts.orderId}, Store: ${brand.name}, Total: ${money(opts.totalCents)})`,
+      html: renderEmail({
+        brand,
+        preheader: `Pedido #${id} confirmado por ${money(opts.totalCents)}.`,
+        kicker: 'Pedido confirmado',
+        heading: opts.customerName
+          ? `Gracias, ${opts.customerName}`
+          : 'Gracias por tu compra',
+        facts: [
+          { label: 'Pedido', value: `#${id}` },
+          { label: 'Fecha', value: shortDate(new Date()) },
+          { label: 'Total', value: money(opts.totalCents) },
+        ],
+        body:
+          p(
+            'Ya tenemos tu pedido. Lo preparamos con café recién tostado y te avisamos apenas salga.',
+          ) +
+          receipt(
+            opts.items.map((it) => ({
+              name: it.productName,
+              detail: `${it.variantName} · ${it.quantity} ud.`,
+              amount: money(it.lineCents),
+            })),
+            { label: 'Total pagado', amount: money(opts.totalCents) },
+          ),
+        note: 'Cuando despachemos, te llega otro correo con el número de guía.',
+      }),
     });
   }
 
@@ -257,28 +353,37 @@ export class MailService {
     to: string;
     customerName: string | null;
     orderId: string;
-    storeName: string;
+    tenantId: string;
     trackingUrl?: string | null;
   }): Promise<void> {
-    const hello = greeting(opts.customerName);
-    const shortId = opts.orderId.slice(-6).toUpperCase();
+    const brand = await this.brandFor(opts.tenantId);
+    const id = shortId(opts.orderId);
     // La URL de rastreo la escribe el personal de la tienda: solo http(s).
     const trackingHref = safeHref(opts.trackingUrl);
-    const trackingBlock = trackingHref
-      ? `<p style="margin-top:16px;"><a href="${trackingHref}" style="display:inline-block; padding:10px 18px; background:#111; color:#fff; text-decoration:none; border-radius:4px;">Rastrear mi envío</a></p>`
-      : `<p style="margin-top:16px;">Pronto recibirás tu paquete en la dirección indicada.</p>`;
 
     await this.send({
       to: opts.to,
-      subject: `¡Tu pedido #${shortId} de ${opts.storeName} está en camino!`,
+      brand,
+      subject: `Tu pedido #${id} va en camino`,
       fallbackLog: `Order shipped for ${opts.to} (Order: ${opts.orderId}, Tracking: ${opts.trackingUrl ?? 'N/A'})`,
-      html: `
-        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
-          <h2>¡Tu café va en camino!</h2>
-          <p>${hello}, tu pedido <strong>#${shortId}</strong> en <strong>${esc(opts.storeName)}</strong> ha sido despachado.</p>
-          ${trackingBlock}
-        </div>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: trackingHref
+          ? 'Ya puedes seguir tu envío.'
+          : 'Pronto llegará a la dirección que indicaste.',
+        kicker: 'En camino',
+        heading: 'Tu café ya salió',
+        facts: [
+          { label: 'Pedido', value: `#${id}` },
+          { label: 'Despachado', value: shortDate(new Date()) },
+        ],
+        body: p(
+          `${greeting(opts.customerName)}, tu pedido salió de nuestro tostadero. ${trackingHref ? 'Con el botón puedes ver por dónde va.' : 'Pronto llegará a la dirección que indicaste.'}`,
+        ),
+        cta: trackingHref
+          ? { label: 'Rastrear envío', href: trackingHref }
+          : null,
+      }),
     });
   }
 
@@ -290,26 +395,33 @@ export class MailService {
     to: string;
     customerName: string | null;
     orderId: string;
-    storeName: string;
+    tenantId: string;
     productName: string;
     totalCents: number;
   }): Promise<void> {
-    const hello = greeting(opts.customerName);
-    const shortId = opts.orderId.slice(-6).toUpperCase();
-    const total = `$${(opts.totalCents / 100).toLocaleString('es-CO')}`;
+    const brand = await this.brandFor(opts.tenantId);
+    const id = shortId(opts.orderId);
 
     await this.send({
       to: opts.to,
-      subject: `Tu próximo envío de ${opts.storeName}: pedido #${shortId} pendiente de pago`,
+      brand,
+      subject: `Tu próximo envío: pedido #${id} pendiente de pago`,
       fallbackLog: `Subscription renewal pending for ${opts.to} (Order: ${opts.orderId})`,
-      html: `
-        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
-          <h2>Tu próximo envío está listo</h2>
-          <p>${hello}, generamos el pedido <strong>#${shortId}</strong> de tu suscripción a <strong>${esc(opts.productName)}</strong> en <strong>${esc(opts.storeName)}</strong>.</p>
-          <p>Total: <strong>${total}</strong>. El pago se hace igual que en tu primer pedido; despacharemos en cuanto lo confirmemos.</p>
-          <p>Puedes pausar, saltar o cancelar tu suscripción desde tu cuenta.</p>
-        </div>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: `Pedido #${id} por ${money(opts.totalCents)}.`,
+        kicker: 'Tu suscripción',
+        heading: 'Tu próximo café está listo',
+        facts: [
+          { label: 'Pedido', value: `#${id}` },
+          { label: 'Café', value: opts.productName },
+          { label: 'Total', value: money(opts.totalCents) },
+        ],
+        body: p(
+          `${greeting(opts.customerName)}, generamos el pedido de tu próximo envío. Se paga igual que el primero y lo despachamos en cuanto se confirme.`,
+        ),
+        note: 'Puedes pausar, saltar o cancelar tu suscripción desde tu cuenta.',
+      }),
     });
   }
 
@@ -320,15 +432,15 @@ export class MailService {
   async sendSubscriptionChanged(opts: {
     to: string;
     customerName: string | null;
-    storeName: string;
+    tenantId: string;
     productName: string;
     change: SubscriptionChange;
     frequencyDays: number;
     nextShipAt: Date | null;
   }): Promise<void> {
+    const brand = await this.brandFor(opts.tenantId);
     const hello = greeting(opts.customerName);
-    const store = esc(opts.storeName);
-    const product = esc(opts.productName);
+    const product = strong(opts.productName);
     const next = opts.nextShipAt
       ? opts.nextShipAt.toLocaleDateString('es-CO', {
           day: 'numeric',
@@ -337,53 +449,74 @@ export class MailService {
           timeZone: 'America/Bogota',
         })
       : null;
-    const nextLine = next
-      ? `<p>Tu próximo envío queda para el <strong>${next}</strong>.</p>`
-      : '';
+    const nextFact = next ? [{ label: 'Próximo envío', value: next }] : [];
 
     const copy: Record<
       SubscriptionChange,
-      { subject: string; title: string; body: string }
+      {
+        subject: string;
+        title: string;
+        body: string;
+        facts: Array<{ label: string; value: string }>;
+      }
     > = {
       paused: {
-        subject: `Tu suscripción en ${opts.storeName} quedó en pausa`,
+        subject: 'Tu suscripción quedó en pausa',
         title: 'Suscripción en pausa',
-        body: `<p>${hello}, <strong>${store}</strong> pausó tu suscripción a <strong>${product}</strong>. No se generarán envíos mientras siga en pausa.</p>`,
+        body: p(
+          `${hello}, pausamos tu suscripción a ${product}. No habrá envíos mientras siga en pausa.`,
+        ),
+        facts: [],
       },
       resumed: {
-        subject: `Tu suscripción en ${opts.storeName} está activa de nuevo`,
-        title: 'Suscripción reanudada',
-        body: `<p>${hello}, <strong>${store}</strong> reanudó tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+        subject: 'Tu suscripción está activa de nuevo',
+        title: 'De vuelta a tu taza',
+        body: p(`${hello}, reanudamos tu suscripción a ${product}.`),
+        facts: nextFact,
       },
       skipped: {
-        subject: `Saltamos tu próximo envío de ${opts.storeName}`,
-        title: 'Próximo envío saltado',
-        body: `<p>${hello}, <strong>${store}</strong> saltó el próximo envío de tu suscripción a <strong>${product}</strong>.</p>${nextLine}`,
+        subject: 'Saltamos tu próximo envío',
+        title: 'Saltamos un envío',
+        body: p(
+          `${hello}, saltamos el próximo envío de tu suscripción a ${product}.`,
+        ),
+        facts: nextFact,
       },
       cancelled: {
-        subject: `Tu suscripción en ${opts.storeName} fue cancelada`,
+        subject: 'Tu suscripción fue cancelada',
         title: 'Suscripción cancelada',
-        body: `<p>${hello}, <strong>${store}</strong> canceló tu suscripción a <strong>${product}</strong>. No se generarán más envíos.</p>`,
+        body: p(
+          `${hello}, cancelamos tu suscripción a ${product}. No habrá más envíos. Gracias por los cafés compartidos.`,
+        ),
+        facts: [],
       },
       frequency: {
-        subject: `Cambió la frecuencia de tu suscripción en ${opts.storeName}`,
-        title: 'Nueva frecuencia de envío',
-        body: `<p>${hello}, <strong>${store}</strong> cambió tu suscripción a <strong>${product}</strong>: ahora recibes un envío <strong>cada ${opts.frequencyDays} días</strong>.</p>${nextLine}`,
+        subject: 'Cambió la frecuencia de tu suscripción',
+        title: 'Nueva frecuencia',
+        body: p(
+          `${hello}, ajustamos la frecuencia de tu suscripción a ${product}.`,
+        ),
+        facts: [
+          { label: 'Cada', value: `${opts.frequencyDays} días` },
+          ...nextFact,
+        ],
       },
     };
     const c = copy[opts.change];
 
     await this.send({
       to: opts.to,
+      brand,
       subject: c.subject,
-      fallbackLog: `Subscription ${opts.change} (${opts.storeName})`,
-      html: `
-        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
-          <h2>${c.title}</h2>
-          ${c.body}
-          <p style="color:#666; font-size:14px;">Si no esperabas este cambio o tienes dudas, escríbele a la tienda.</p>
-        </div>
-      `,
+      fallbackLog: `Subscription ${opts.change} (${brand.name})`,
+      html: renderEmail({
+        brand,
+        preheader: c.title,
+        kicker: 'Tu suscripción',
+        heading: c.title,
+        facts: c.facts,
+        body: c.body,
+      }),
     });
   }
 
@@ -392,69 +525,90 @@ export class MailService {
     to: string;
     customerName: string | null;
     orderId: string;
-    storeName: string;
+    tenantId: string;
   }): Promise<void> {
-    const hello = greeting(opts.customerName);
-    const shortId = opts.orderId.slice(-6).toUpperCase();
+    const brand = await this.brandFor(opts.tenantId);
+    const id = shortId(opts.orderId);
 
     await this.send({
       to: opts.to,
-      subject: `Tu pedido #${shortId} en ${opts.storeName} ha sido cancelado`,
+      brand,
+      subject: `Tu pedido #${id} fue cancelado`,
       fallbackLog: `Order cancelled for ${opts.to} (Order: ${opts.orderId})`,
-      html: `
-        <div style="font-family:sans-serif; max-width:600px; margin:0 auto; color:#333;">
-          <h2>Pedido cancelado</h2>
-          <p>${hello}, te informamos que tu pedido <strong>#${shortId}</strong> en <strong>${esc(opts.storeName)}</strong> ha sido cancelado.</p>
-          <p>Si ya habías realizado el pago, el reembolso se procesará según los tiempos de tu entidad bancaria. Si tienes dudas, contáctanos respondiendo a la tienda.</p>
-        </div>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: `Cancelamos el pedido #${id}.`,
+        kicker: 'Pedido cancelado',
+        heading: 'Cancelamos tu pedido',
+        facts: [{ label: 'Pedido', value: `#${id}` }],
+        body: p(
+          `${greeting(opts.customerName)}, tu pedido quedó cancelado. Si ya lo habías pagado, el reembolso llega según los tiempos de tu banco o medio de pago.`,
+        ),
+      }),
     });
   }
 
-  /** Bienvenida al dueño de una tienda recién creada por el superadmin. */
   /** Invitación a un miembro nuevo del equipo de una tienda. */
   async sendMemberInvitation(opts: {
     to: string;
     name: string | null | undefined;
-    storeName: string;
+    tenantId: string;
     roleLabel: string;
     accessUrl: string;
   }): Promise<void> {
-    const hello = greeting(opts.name);
+    const brand = await this.brandFor(opts.tenantId);
     await this.send({
       to: opts.to,
-      subject: `Te agregaron al equipo de ${opts.storeName}`,
-      fallbackLog: `Member invitation ${opts.to} (store: ${opts.storeName}, role: ${opts.roleLabel}). Access: ${opts.accessUrl}`,
-      html: `
-        <p>${hello},</p>
-        <p>Te agregaron al equipo de <strong>${esc(opts.storeName)}</strong> con el rol <strong>${esc(opts.roleLabel)}</strong>.</p>
-        <p><a href="${safeHref(opts.accessUrl) ?? '#'}">Entrar al panel</a></p>
-        <p>Te pediremos tu correo para enviarte un enlace de acceso seguro (sin contraseña).</p>
-        <p>Si no esperabas este correo, puedes ignorarlo.</p>
-      `,
+      brand,
+      subject: `Te agregaron al equipo de ${brand.name}`,
+      fallbackLog: `Member invitation ${opts.to} (store: ${brand.name}, role: ${opts.roleLabel}). Access: ${opts.accessUrl}`,
+      html: renderEmail({
+        brand,
+        preheader: `Tu rol: ${opts.roleLabel}.`,
+        kicker: 'Equipo',
+        heading: opts.name
+          ? `Bienvenido, ${opts.name}`
+          : 'Bienvenido al equipo',
+        facts: [{ label: 'Tu rol', value: opts.roleLabel }],
+        body: p(
+          `Ahora eres parte del equipo de ${strong(brand.name)}. Para entrar te pedimos tu correo y te enviamos un enlace de acceso, sin contraseña.`,
+        ),
+        cta: {
+          label: 'Entrar al panel',
+          href: safeHref(opts.accessUrl) ?? '#',
+        },
+        note: 'Si no esperabas esta invitación, ignora este mensaje.',
+      }),
     });
   }
 
+  /** Bienvenida al dueño de una tienda recién creada por el superadmin. */
   async sendTenantWelcome(
     to: string,
     ownerName: string | null | undefined,
     storeName: string,
     accessUrl: string,
   ): Promise<void> {
-    const hello = greeting(ownerName);
+    const brand = this.platformBrand();
     await this.send({
       to,
-      subject: `Tu tienda ${storeName} está lista`,
+      brand,
+      subject: `${storeName} ya está en línea`,
       fallbackLog: `Welcome ${to} (store: ${storeName}). Access: ${accessUrl}`,
-      html: `
-        <p>${hello},</p>
-        <p>Creamos tu tienda <strong>${esc(storeName)}</strong> en BestCoffee.
-           Ya puedes acceder a tu panel para configurar productos, contenido y más.</p>
-        <p><a href="${safeHref(accessUrl) ?? '#'}">Acceder a mi panel</a></p>
-        <p>Te pediremos tu correo para enviarte un enlace de acceso seguro
-           (sin contraseña).</p>
-        <p>¡Bienvenido a bordo!</p>
-      `,
+      html: renderEmail({
+        brand,
+        preheader: 'Entra a tu panel para cargar tus cafés.',
+        kicker: 'Tu tienda',
+        heading: `${storeName} ya está en línea`,
+        body:
+          p(
+            `${greeting(ownerName)}, tu tienda está creada. Desde el panel cargas tus cafés, escribes tus guías y conectas pagos y envíos.`,
+          ) +
+          p(
+            'Para entrar te pedimos tu correo y te enviamos un enlace de acceso, sin contraseña.',
+          ),
+        cta: { label: 'Ir a mi panel', href: safeHref(accessUrl) ?? '#' },
+      }),
     });
   }
 }

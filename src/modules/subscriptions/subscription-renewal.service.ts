@@ -369,8 +369,8 @@ export class SubscriptionRenewalService {
       .findUnique({
         where: { id: orderId },
         select: {
+          tenantId: true,
           customer: { select: { email: true, name: true } },
-          tenant: { select: { name: true } },
         },
       })
       .then((o) => {
@@ -379,7 +379,7 @@ export class SubscriptionRenewalService {
           to: o.customer.email,
           customerName: o.customer.name,
           orderId,
-          storeName: o.tenant.name,
+          tenantId: o.tenantId,
           productName,
           totalCents,
         });

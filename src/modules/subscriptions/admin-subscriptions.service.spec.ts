@@ -57,7 +57,7 @@ describe('AdminSubscriptionsService · avisos al cliente', () => {
     expect(mail.sendSubscriptionChanged).toHaveBeenCalledWith({
       to: 'cliente@demo.co',
       customerName: 'Cliente Demo',
-      storeName: 'ORÍGEN',
+      tenantId: 'tenant-1',
       productName: 'Huila Supremo',
       change,
       frequencyDays: 30,

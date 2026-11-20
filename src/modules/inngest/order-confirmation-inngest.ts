@@ -23,7 +23,6 @@ export const createOrderConfirmationFunction = (
           where: { id: orderId },
           include: {
             customer: { select: { email: true, name: true } },
-            tenant: { select: { name: true } },
             items: {
               select: {
                 productName: true,
@@ -45,7 +44,7 @@ export const createOrderConfirmationFunction = (
           to: order.customer.email,
           customerName: order.customer.name,
           orderId: order.id,
-          storeName: order.tenant.name,
+          tenantId: order.tenantId,
           totalCents: order.totalCents,
           items: order.items,
         });

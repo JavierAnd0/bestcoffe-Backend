@@ -7,6 +7,8 @@ export interface AppConfig {
   /** URL pública de esta API (webhooks de terceros, p. ej. Envia). */
   apiPublicUrl: string;
   platformOwnerEmail: string;
+  /** Correo de contacto público de la plataforma (pie de sus correos). */
+  platformContactEmail: string;
   databaseUrl: string;
   jwt: {
     secret: string;
@@ -57,6 +59,7 @@ export default (): AppConfig => ({
   webAppUrl: process.env.WEB_APP_URL ?? 'http://localhost:3000',
   apiPublicUrl: (process.env.API_PUBLIC_URL ?? '').replace(/\/+$/, ''),
   platformOwnerEmail: process.env.PLATFORM_OWNER_EMAIL ?? '',
+  platformContactEmail: process.env.PLATFORM_CONTACT_EMAIL ?? '',
   // Garantizados por envValidationSchema (Joi) en el arranque.
   databaseUrl: process.env.DATABASE_URL as string,
   jwt: {

@@ -14,6 +14,7 @@ import { TenantFeaturesService } from '../../common/features/tenant-features.ser
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { CreatePlatformTenantDto } from './dto/create-platform-tenant.dto';
 import { UpdatePlatformTenantDto } from './dto/update-platform-tenant.dto';
+import { storeUrl } from '../../common/urls/store-url';
 
 @Injectable()
 export class PlatformTenantsService {
@@ -114,9 +115,7 @@ export class PlatformTenantsService {
     // Correo de bienvenida: el dueño accede por magic link de operador en
     // /acceso (prellenamos su email). No firmamos un token aquí para evitar que
     // expire antes de que abra el correo — él solicita el enlace al entrar.
-    const webUrl =
-      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
-    const accessUrl = `${webUrl}/acceso?email=${encodeURIComponent(dto.ownerEmail)}`;
+    const accessUrl = `${storeUrl(dto.slug, this.config)}/acceso?email=${encodeURIComponent(dto.ownerEmail)}`;
     try {
       await this.mail.sendTenantWelcome(
         dto.ownerEmail,
@@ -267,14 +266,15 @@ export class PlatformTenantsService {
   ) {
     const owner = await this.prisma.tenantMembership.findFirst({
       where: { tenantId, role: 'TENANT_OWNER' },
-      include: { user: { select: { email: true } } },
+      include: {
+        user: { select: { email: true } },
+        tenant: { select: { slug: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     if (!owner) return;
 
-    const webUrl =
-      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
-    const panelUrl = `${webUrl}/admin`;
+    const panelUrl = `${storeUrl(owner.tenant.slug, this.config)}/admin`;
     try {
       await this.mail.sendCommissionChangeProposal(
         owner.user.email,

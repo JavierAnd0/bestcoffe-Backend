@@ -4,6 +4,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PlatformTenantsController } from './platform-tenants.controller';
 import { PlatformTiersController } from './platform-tiers.controller';
 import { PlatformTenantsService } from './platform-tenants.service';
+import { PlatformEmailController } from './platform-email.controller';
+import { EmailUsageService } from './email-usage.service';
 import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
@@ -17,7 +19,11 @@ import { TenantsModule } from '../tenants/tenants.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [PlatformTenantsController, PlatformTiersController],
-  providers: [PlatformTenantsService],
+  controllers: [
+    PlatformTenantsController,
+    PlatformTiersController,
+    PlatformEmailController,
+  ],
+  providers: [PlatformTenantsService, EmailUsageService],
 })
 export class PlatformModule {}

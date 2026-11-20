@@ -37,9 +37,13 @@ export class AuthController {
   @Public()
   @HttpCode(200)
   @Throttle({ default: { limit: 3, ttl: 300_000 } })
-  async login(@Body() dto: LoginDto, @Req() req: Request) {
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Headers('x-tenant-slug') tenantSlug?: string,
+  ) {
     await this.turnstile.verifyToken(dto.turnstileToken, req.ip);
-    return this.auth.requestMagicLink(dto.email);
+    return this.auth.requestMagicLink(dto.email, tenantSlug);
   }
 
   /** Paso 2: canjea el token del enlace por un JWT de operador. */
