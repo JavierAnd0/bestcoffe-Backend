@@ -9,7 +9,7 @@ import {
   verifyTotp,
 } from '../../common/crypto/totp';
 
-const ISSUER = 'BestCoffee';
+const ISSUER = 'Bestkofi';
 const INVALID_CODE =
   'El código no es válido. Revisa la hora del teléfono e inténtalo de nuevo.';
 

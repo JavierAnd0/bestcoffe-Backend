@@ -1,4 +1,4 @@
-# BestCoffee API
+# Bestkofi API
 
 Backend multi-tenant de la plataforma SaaS de café de especialidad (módulos:
 tienda pública, panel admin, motor de suscripciones). Consumido por el front
