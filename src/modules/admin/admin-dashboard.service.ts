@@ -106,28 +106,33 @@ export class AdminDashboardService {
   async getAlerts(tenantId: string) {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const [lowStockVariants, pendingReviews, failedOrders] = await Promise.all([
-      this.prisma.productVariant.findMany({
-        where: {
-          tenantId,
-          stock: { lt: 5 },
-          product: { tenantId, status: 'ACTIVE' },
-        },
-        include: { product: { select: { name: true } } },
-        take: 5,
-        orderBy: { stock: 'asc' },
-      }),
-      this.prisma.review.count({
-        where: { tenantId, status: 'PENDING' },
-      }),
-      this.prisma.order.count({
-        where: {
-          tenantId,
-          paymentStatus: PaymentStatus.FAILED,
-          createdAt: { gte: sevenDaysAgo },
-        },
-      }),
-    ]);
+    const [lowStockVariants, pendingReviews, failedOrders, tenant] =
+      await Promise.all([
+        this.prisma.productVariant.findMany({
+          where: {
+            tenantId,
+            stock: { lt: 5 },
+            product: { tenantId, status: 'ACTIVE' },
+          },
+          include: { product: { select: { name: true } } },
+          take: 5,
+          orderBy: { stock: 'asc' },
+        }),
+        this.prisma.review.count({
+          where: { tenantId, status: 'PENDING' },
+        }),
+        this.prisma.order.count({
+          where: {
+            tenantId,
+            paymentStatus: PaymentStatus.FAILED,
+            createdAt: { gte: sevenDaysAgo },
+          },
+        }),
+        this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { branding: true },
+        }),
+      ]);
 
     const alerts: Array<{
       id: string;
@@ -160,6 +165,19 @@ export class AdminDashboardService {
         severity: 'danger',
         title: 'Pagos fallidos',
         body: `${failedOrders} pago${failedOrders !== 1 ? 's' : ''} fallido${failedOrders !== 1 ? 's' : ''} en los últimos 7 días`,
+      });
+    }
+
+    // Sin correo de contacto, los correos a clientes no dicen a dónde escribir
+    // y las respuestas no le llegan a la tienda.
+    const contact = (tenant?.branding as { contactEmail?: unknown } | null)
+      ?.contactEmail;
+    if (typeof contact !== 'string' || !contact.trim()) {
+      alerts.push({
+        id: 'missing-contact-email',
+        severity: 'warning',
+        title: 'Falta tu correo de contacto',
+        body: 'Agrégalo en Configuración: aparece en los correos a tus clientes y ahí te llegan sus respuestas.',
       });
     }
 

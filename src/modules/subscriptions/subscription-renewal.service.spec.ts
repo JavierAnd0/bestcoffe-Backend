@@ -129,7 +129,7 @@ describe('SubscriptionRenewalService — renovación sin pasarela', () => {
         update: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn().mockResolvedValue({
           customer: { email: 'cliente@example.com', name: 'Ana' },
-          tenant: { name: 'Tienda Uno' },
+          tenantId: 'tenant-uno',
         }),
       },
       $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -210,7 +210,7 @@ describe('SubscriptionRenewalService — renovación sin pasarela', () => {
       to: 'cliente@example.com',
       customerName: 'Ana',
       orderId: 'ord-r1',
-      storeName: 'Tienda Uno',
+      tenantId: 'tenant-uno',
       productName: expect.any(String) as unknown,
       totalCents: 48_000_00,
     });

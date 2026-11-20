@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { MfaService } from './mfa.service';
+import { platformUrl, storeUrl } from '../../common/urls/store-url';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import type { CurrentUserData } from '../../common/decorators/current-user.decorator';
 
@@ -31,10 +32,15 @@ export class AuthService {
    * acceso por correo. Responde siempre genérico para no revelar qué correos
    * son operadores válidos (anti-enumeración).
    */
-  async requestMagicLink(email: string) {
+  async requestMagicLink(email: string, tenantSlug?: string | null) {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: { memberships: { select: { tenantId: true } } },
+      include: {
+        memberships: {
+          select: { tenantId: true, tenant: { select: { slug: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     // Solo enviamos enlace a operadores con al menos una membresía.
@@ -47,7 +53,12 @@ export class AuthService {
           loginTokenExpiresAt: new Date(Date.now() + LOGIN_TOKEN_TTL_MS),
         },
       });
-      await this.sendMagicLinkEmail(user.email, user.name, rawToken);
+      await this.sendMagicLinkEmail(
+        user.email,
+        user.name,
+        rawToken,
+        this.magicLinkTarget(user.email, user.memberships, tenantSlug),
+      );
     }
 
     return GENERIC_RESPONSE;
@@ -224,14 +235,45 @@ export class AuthService {
     return createHash('sha256').update(raw).digest('hex');
   }
 
+  /**
+   * A dónde lleva el enlace de acceso (la sesión queda en ese host):
+   * - a la tienda desde la que se pidió, si el operador es miembro de ella;
+   * - al dominio de la plataforma si lo pidió ahí el dueño de la plataforma;
+   * - si no, a su primera tienda.
+   */
+  private magicLinkTarget(
+    email: string,
+    memberships: Array<{ tenantId: string; tenant: { slug: string } }>,
+    tenantSlug?: string | null,
+  ): { url: string; tenantId: string | null } {
+    const asked = tenantSlug?.trim().toLowerCase();
+    const match = asked
+      ? memberships.find((m) => m.tenant.slug === asked)
+      : undefined;
+    if (match) {
+      return {
+        url: storeUrl(match.tenant.slug, this.config),
+        tenantId: match.tenantId,
+      };
+    }
+    const owner = this.config.get<string>('platformOwnerEmail');
+    if (!asked && owner && owner.toLowerCase() === email.toLowerCase()) {
+      return { url: platformUrl(this.config), tenantId: null };
+    }
+    const first = memberships[0];
+    return {
+      url: storeUrl(first?.tenant.slug, this.config),
+      tenantId: first?.tenantId ?? null,
+    };
+  }
+
   private async sendMagicLinkEmail(
     email: string,
     name: string | null,
     rawToken: string,
+    target: { url: string; tenantId: string | null },
   ): Promise<void> {
-    const webUrl =
-      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
-    const link = `${webUrl}/acceso/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    await this.mail.sendOperatorMagicLink(email, name, link);
+    const link = `${target.url}/acceso/verificar?token=${rawToken}&email=${encodeURIComponent(email)}`;
+    await this.mail.sendOperatorMagicLink(email, name, link, target.tenantId);
   }
 }

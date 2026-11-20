@@ -16,6 +16,7 @@ describe('CustomerAuthService - Lockout, Brute Force & Password Reset', () => {
       findFirst: jest.Mock;
       update: jest.Mock;
     };
+    tenant: { findUnique: jest.Mock };
   };
   let jwt: { signAsync: jest.Mock };
   let config: { get: jest.Mock };
@@ -27,6 +28,9 @@ describe('CustomerAuthService - Lockout, Brute Force & Password Reset', () => {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
+      },
+      tenant: {
+        findUnique: jest.fn().mockResolvedValue({ slug: 'origen' }),
       },
     };
     jwt = {

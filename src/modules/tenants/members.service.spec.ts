@@ -302,7 +302,7 @@ describe('DTOs de miembros', () => {
       expect(mail.sendMemberInvitation).toHaveBeenCalledWith({
         to: 'nuevo@demo.test',
         name: 'Nuevo',
-        storeName: 'Cafetería Demo',
+        tenantId: 't1',
         roleLabel: 'Editor (catálogo y contenido)',
         accessUrl: 'https://demo.bestcoffee.io/acceso?email=nuevo%40demo.test',
       });

@@ -168,19 +168,16 @@ export class AdminSubscriptionsService {
     if (!this.mail || !sub.customer?.email) return;
     const mail = this.mail;
     const to = sub.customer.email;
-    void this.prisma.tenant
-      .findUnique({ where: { id: sub.tenantId }, select: { name: true } })
-      .then((tenant) =>
-        mail.sendSubscriptionChanged({
-          to,
-          customerName: sub.customer.name,
-          storeName: tenant?.name ?? 'la tienda',
-          productName: sub.variant.product.name,
-          change,
-          frequencyDays: sub.frequencyDays,
-          nextShipAt: sub.nextShipAt,
-        }),
-      )
+    void mail
+      .sendSubscriptionChanged({
+        to,
+        customerName: sub.customer.name,
+        tenantId: sub.tenantId,
+        productName: sub.variant.product.name,
+        change,
+        frequencyDays: sub.frequencyDays,
+        nextShipAt: sub.nextShipAt,
+      })
       .catch((err: unknown) =>
         this.logger.warn(
           `No se pudo avisar al cliente del cambio (${change}) en la suscripción ${sub.id}: ${String(err)}`,

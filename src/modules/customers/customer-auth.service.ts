@@ -17,6 +17,7 @@ import type { SyncNeonCustomerDto } from './dto/sync-neon-customer.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ResetPasswordDto } from './dto/reset-password.dto';
 import type { CustomerJwtPayload } from '../../common/guards/customer-auth.guard';
+import { storeUrl } from '../../common/urls/store-url';
 
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1 h
@@ -63,7 +64,7 @@ export class CustomerAuthService {
       },
     });
 
-    await this.sendVerificationEmail(dto.email, dto.name, rawToken);
+    await this.sendVerificationEmail(tenantId, dto.email, dto.name, rawToken);
 
     return {
       message:
@@ -205,6 +206,7 @@ export class CustomerAuthService {
       });
 
       await this.sendPasswordResetEmail(
+        tenantId,
         customer.email,
         customer.name,
         rawToken,
@@ -343,25 +345,34 @@ export class CustomerAuthService {
 
   // ─── Email ───────────────────────────────────────────────────────────────
 
+  /** Web de la tienda del cliente: ahí viven /cuenta/… (no en la landing). */
+  private async customerStoreUrl(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+    return storeUrl(t?.slug, this.config);
+  }
+
   private async sendVerificationEmail(
+    tenantId: string,
     email: string,
     name: string | null | undefined,
     rawToken: string,
   ): Promise<void> {
-    const webUrl =
-      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const webUrl = await this.customerStoreUrl(tenantId);
     const link = `${webUrl}/cuenta/verificar-email?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    await this.mail.sendCustomerVerification(email, name, link);
+    await this.mail.sendCustomerVerification(email, name, link, tenantId);
   }
 
   private async sendPasswordResetEmail(
+    tenantId: string,
     email: string,
     name: string | null | undefined,
     rawToken: string,
   ): Promise<void> {
-    const webUrl =
-      this.config.get<string>('webAppUrl') ?? 'http://localhost:3000';
+    const webUrl = await this.customerStoreUrl(tenantId);
     const link = `${webUrl}/cuenta/restablecer-clave?token=${rawToken}&email=${encodeURIComponent(email)}`;
-    await this.mail.sendCustomerPasswordReset(email, name, link);
+    await this.mail.sendCustomerPasswordReset(email, name, link, tenantId);
   }
 }

@@ -117,7 +117,7 @@ export class AdminOrdersService {
             to: cancelledOrder.customer.email,
             customerName: cancelledOrder.customer.name,
             orderId: cancelledOrder.id,
-            storeName: cancelledOrder.tenant.name,
+            tenantId: cancelledOrder.tenantId,
           })
           .catch((err: unknown) =>
             this.logger.warn(
@@ -153,7 +153,7 @@ export class AdminOrdersService {
           to: updated.customer.email,
           customerName: updated.customer.name,
           orderId: updated.id,
-          storeName: updated.tenant.name,
+          tenantId: updated.tenantId,
           trackingUrl: updated.trackingUrl,
         })
         .catch((err: unknown) =>

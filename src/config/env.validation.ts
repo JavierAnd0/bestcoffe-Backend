@@ -74,6 +74,7 @@ export const envValidationSchema = Joi.object({
   RUN_SEED: Joi.string().allow('').optional(),
   ENABLE_SWAGGER: Joi.string().allow('').optional(),
   PLATFORM_OWNER_EMAIL: Joi.string().email().allow('').optional(),
+  PLATFORM_CONTACT_EMAIL: Joi.string().email().allow('').optional(),
 });
 
 export const envValidationOptions = {
