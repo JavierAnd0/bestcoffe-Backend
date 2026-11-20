@@ -93,6 +93,16 @@ enum OrderStatus {
   CANCELLED
 }
 
+// Estado normalizado de una guía de envío (los estados del agregador se
+// traducen a estos; ver envia-status.ts).
+enum ShipmentStatus {
+  LABEL_CREATED // guía generada, aún sin recoger
+  IN_TRANSIT // recogida / en camino / en reparto
+  DELIVERED
+  EXCEPTION // novedad: devolución, dirección errada, extravío…
+  CANCELLED // guía anulada
+}
+
 enum PaymentStatus {
   PAID
   PENDING
@@ -199,6 +209,19 @@ model Tenant {
   epaycoPrivateKey String?
   epaycoTest       Boolean @default(true)
   epaycoConnected  Boolean @default(false)
+
+  // Envia.com — agregador de transportadoras. Cada tienda conecta su propia
+  // cuenta (sus guías se pagan con su saldo). El token y el secreto de firma
+  // de webhooks se guardan cifrados (secret-box). `enviaOrigin` es la dirección
+  // de despacho ya validada (con el código DANE) y `enviaPackage` el empaque
+  // por defecto. `enviaWebhookId` es el webhook registrado en Envia.
+  enviaToken         String?
+  enviaWebhookSecret String?
+  enviaTest          Boolean @default(true)
+  enviaConnected     Boolean @default(false)
+  enviaWebhookId     Int?
+  enviaOrigin        Json?
+  enviaPackage       Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -472,6 +495,9 @@ model Order {
   totalCents      Int
   discountCode    String?
   trackingUrl     String?
+  // Copia de la guía activa para listados y para la cuenta del cliente.
+  shippingCarrier String?
+  trackingNumber  String?
   internalNotes   String?
 
   stripePaymentIntentId String?
@@ -486,6 +512,7 @@ model Order {
   customer     Customer      @relation(fields: [customerId], references: [id])
   items        OrderItem[]
   subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  shipments    Shipment[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
@@ -711,6 +738,46 @@ model AuditLog {
 
 model StripeEvent {
   id          String   @id // event.id de Stripe
+  type        String
+  processedAt DateTime @default(now())
+}
+
+// Guía de envío generada con el agregador. Un pedido puede tener varias si
+// se anula una y se genera otra; la activa es la última no CANCELLED.
+model Shipment {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  orderId            String
+  provider           String         @default("ENVIA")
+  carrier            String
+  service            String
+  trackingNumber     String
+  providerShipmentId String?
+  labelUrl           String?
+  trackingUrl        String?
+  costCents          Int // lo que la tienda pagó por la guía (COP en centavos)
+  currency           String         @default("COP")
+  status             ShipmentStatus @default(LABEL_CREATED)
+  providerStatus     String? // estado tal cual lo reporta el agregador
+  statusDetail       String? // descripción / ubicación del último evento
+  lastEventAt        DateTime?
+  lastCheckedAt      DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, trackingNumber])
+  @@index([tenantId, status])
+  @@index([orderId])
+}
+
+// Avisos de webhook de envíos ya procesados (X-Webhook-Id), para no aplicar
+// dos veces el mismo reintento.
+model ShippingEvent {
+  id          String   @id
   type        String
   processedAt DateTime @default(now())
 }
