@@ -4,6 +4,8 @@ export interface AppConfig {
   nodeEnv: string;
   port: number;
   webAppUrl: string;
+  /** URL pública de esta API (webhooks de terceros, p. ej. Envia). */
+  apiPublicUrl: string;
   platformOwnerEmail: string;
   databaseUrl: string;
   jwt: {
@@ -53,6 +55,7 @@ export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '3001', 10),
   webAppUrl: process.env.WEB_APP_URL ?? 'http://localhost:3000',
+  apiPublicUrl: (process.env.API_PUBLIC_URL ?? '').replace(/\/+$/, ''),
   platformOwnerEmail: process.env.PLATFORM_OWNER_EMAIL ?? '',
   // Garantizados por envValidationSchema (Joi) en el arranque.
   databaseUrl: process.env.DATABASE_URL as string,

@@ -28,6 +28,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NewsletterModule } from './modules/newsletter/newsletter.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { ShippingModule } from './modules/shipping/shipping.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StripeModule } from './modules/stripe/stripe.module';
@@ -117,6 +118,7 @@ import { LOG_REDACT } from './common/logging/redact';
     NewsletterModule,
     CustomersModule,
     OrdersModule,
+    ShippingModule,
     SubscriptionsModule,
     PromotionsModule,
     StripeModule,

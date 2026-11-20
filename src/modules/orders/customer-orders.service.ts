@@ -26,6 +26,8 @@ export class CustomerOrdersService {
         shippingCents: true,
         discountCode: true,
         trackingUrl: true,
+        shippingCarrier: true,
+        trackingNumber: true,
         createdAt: true,
         _count: { select: { items: true } },
       },
@@ -43,6 +45,21 @@ export class CustomerOrdersService {
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, customerId },
       include: {
+        // Solo la guía activa y lo que el cliente necesita: sin costo ni etiqueta.
+        shipments: {
+          where: { status: { not: 'CANCELLED' } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            carrier: true,
+            trackingNumber: true,
+            trackingUrl: true,
+            status: true,
+            statusDetail: true,
+            lastEventAt: true,
+            deliveredAt: true,
+          },
+        },
         items: {
           select: {
             id: true,
@@ -92,11 +109,13 @@ export class CustomerOrdersService {
       stripePaymentIntentId,
       mpPaymentId,
       epaycoRef,
+      shipments,
       ...publicOrder
     } = order;
     /* eslint-enable @typescript-eslint/no-unused-vars */
     return {
       ...publicOrder,
+      shipment: shipments[0] ?? null,
       items: order.items.map(({ variantId, ...item }) => {
         const product = byId.get(variantId);
         return {

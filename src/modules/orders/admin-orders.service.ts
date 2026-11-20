@@ -28,6 +28,7 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 const ORDER_DETAIL_INCLUDE = {
   items: true,
   customer: { select: { id: true, email: true, name: true } },
+  shipments: { orderBy: { createdAt: 'desc' } },
 } satisfies Prisma.OrderInclude;
 
 @Injectable()

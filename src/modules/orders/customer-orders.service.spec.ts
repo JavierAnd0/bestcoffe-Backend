@@ -16,6 +16,13 @@ describe('CustomerOrdersService.findOne', () => {
           mpPaymentId: '987',
           epaycoRef: '6aff27ba9112494bdcc7e61a',
           items: [],
+          shipments: [
+            {
+              carrier: 'servientrega',
+              trackingNumber: '10017788',
+              status: 'IN_TRANSIT',
+            },
+          ],
         }),
       },
       productVariant: { findMany: jest.fn().mockResolvedValue([]) },
@@ -30,12 +37,14 @@ describe('CustomerOrdersService.findOne', () => {
       id: 'order_1',
       paymentStatus: 'PAID',
       trackingUrl: 'https://rastreo.example/123',
+      shipment: { carrier: 'servientrega', trackingNumber: '10017788' },
     });
     for (const hidden of [
       'internalNotes',
       'stripePaymentIntentId',
       'mpPaymentId',
       'epaycoRef',
+      'shipments',
     ]) {
       expect(order).not.toHaveProperty(hidden);
     }
