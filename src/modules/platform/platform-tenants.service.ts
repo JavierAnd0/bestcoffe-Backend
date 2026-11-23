@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Tier } from '@prisma/client';
@@ -15,6 +16,27 @@ import type { JwtPayload } from '../../common/guards/auth.guard';
 import { CreatePlatformTenantDto } from './dto/create-platform-tenant.dto';
 import { UpdatePlatformTenantDto } from './dto/update-platform-tenant.dto';
 import { storeUrl } from '../../common/urls/store-url';
+
+/**
+ * Fusiona overrides sobre el JSON guardado. Un valor `null` borra la clave: así
+ * el panel puede quitar una excepción del plan y volver al valor del tier (sin
+ * esto, una excepción guardada no se podía deshacer). Las claves que no se
+ * envían se conservan (p. ej. `demoSandbox`, que no está en el catálogo).
+ */
+function mergeJson(
+  current: Prisma.JsonValue,
+  patch: Record<string, unknown>,
+): Prisma.InputJsonValue {
+  const base =
+    current && typeof current === 'object' && !Array.isArray(current)
+      ? (current as Record<string, unknown>)
+      : {};
+  const merged: Record<string, unknown> = { ...base, ...patch };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === null) delete merged[key];
+  }
+  return merged as Prisma.InputJsonValue;
+}
 
 @Injectable()
 export class PlatformTenantsService {
@@ -102,12 +124,6 @@ export class PlatformTenantsService {
       await tx.tenantMembership.create({
         data: { tenantId: t.id, userId: owner.id, role: 'TENANT_OWNER' },
       });
-
-      if (dto.domain) {
-        await tx.tenantDomain.create({
-          data: { tenantId: t.id, domain: dto.domain, isPrimary: true },
-        });
-      }
 
       return { ...t, owner };
     });
@@ -211,10 +227,7 @@ export class PlatformTenantsService {
       data: {
         ...(dto.tier && { tier: dto.tier }),
         ...(dto.features && {
-          features: {
-            ...(tenant.features as object),
-            ...dto.features,
-          } as Prisma.InputJsonValue,
+          features: mergeJson(tenant.features, dto.features),
         }),
         ...(dto.branding && {
           branding: {
@@ -291,10 +304,21 @@ export class PlatformTenantsService {
     }
   }
 
-  async impersonate(id: string): Promise<{ accessToken: string }> {
+  /**
+   * "Entrar como admin": el panel de la plataforma vive en otro dominio que la
+   * tienda, y una cookie puesta allí no llega a `<slug>.<dominio>`. Por eso no
+   * se entrega la sesión aquí sino un pase de un minuto y un solo uso; la
+   * tienda lo canjea en su propio dominio (`POST /v1/auth/impersonation`).
+   */
+  async impersonate(
+    id: string,
+  ): Promise<{ handoffToken: string; slug: string; name: string }> {
     const membership = await this.prisma.tenantMembership.findFirst({
       where: { tenantId: id, role: 'TENANT_OWNER' },
-      include: { user: { select: { id: true, email: true } } },
+      include: {
+        user: { select: { id: true, email: true } },
+        tenant: { select: { slug: true, name: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     if (!membership)
@@ -303,9 +327,17 @@ export class PlatformTenantsService {
     const payload: JwtPayload = {
       sub: membership.user.id,
       email: membership.user.email,
-      type: 'operator',
+      type: 'impersonation',
+      tenantId: id,
+      jti: randomUUID(),
     };
-    const accessToken = await this.jwt.signAsync(payload, { expiresIn: '2h' });
-    return { accessToken };
+    const handoffToken = await this.jwt.signAsync(payload, {
+      expiresIn: '60s',
+    });
+    return {
+      handoffToken,
+      slug: membership.tenant.slug,
+      name: membership.tenant.name,
+    };
   }
 }

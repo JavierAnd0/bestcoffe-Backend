@@ -21,6 +21,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { VerifyLoginDto } from './dto/verify-login.dto';
 import { MfaCodeDto, VerifyMfaDto } from './dto/mfa.dto';
+import { ImpersonationDto } from './dto/impersonation.dto';
 import { MfaService } from './mfa.service';
 
 @ApiTags('auth')
@@ -77,6 +78,18 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   verifyMfa(@Body() dto: VerifyMfaDto) {
     return this.auth.verifyMfa(dto.mfaToken, dto.code);
+  }
+
+  /**
+   * Canje del pase de "Entrar como admin" del superadmin por la sesión en la
+   * tienda. Público: el pase firmado (1 min, un solo uso) es la credencial.
+   */
+  @Post('impersonation')
+  @Public()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  exchangeImpersonation(@Body() dto: ImpersonationDto) {
+    return this.auth.exchangeImpersonation(dto.token);
   }
 
   // ── Gestión del 2FA del propio operador (con sesión) ──────────────────────
