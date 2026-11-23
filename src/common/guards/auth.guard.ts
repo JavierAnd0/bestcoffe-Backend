@@ -19,8 +19,13 @@ export interface JwtPayload {
   /**
    * 'operator' = sesión de operador. 'mfa_pending' = pasó el enlace mágico pero
    * aún le falta el código de 2FA: solo sirve para `POST /v1/auth/mfa/verify`.
+   * 'impersonation' = pase de un minuto que el superadmin lleva a la tienda:
+   * solo sirve para `POST /v1/auth/impersonation`, que lo canjea por la sesión.
    */
-  type?: 'operator' | 'mfa_pending';
+  type?: 'operator' | 'mfa_pending' | 'impersonation';
+  /** Solo en el pase de impersonación: tienda a la que da acceso y uso único. */
+  tenantId?: string;
+  jti?: string;
   /** La sesión se abrió con el código de 2FA (o justo al activarlo). */
   mfa?: boolean;
 }

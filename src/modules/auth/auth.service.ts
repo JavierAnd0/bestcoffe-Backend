@@ -12,6 +12,7 @@ import type { CurrentUserData } from '../../common/decorators/current-user.decor
 const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 min (validez del enlace)
 const SESSION_TTL = '7d'; // duración de la sesión de operador tras el login
 const MFA_PENDING_TTL = '5m'; // tiempo para escribir el código de 2FA tras el enlace
+const IMPERSONATION_TTL = '2h'; // sesión del superadmin dentro de una tienda
 const GENERIC_RESPONSE = {
   message:
     'Si el correo corresponde a un operador, te enviamos un enlace de acceso.',
@@ -19,6 +20,10 @@ const GENERIC_RESPONSE = {
 
 @Injectable()
 export class AuthService {
+  // Pases de impersonación ya canjeados (jti → vence). Viven un minuto, así que
+  // basta con recordarlos en memoria ese tiempo.
+  private readonly usedImpersonationIds = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -182,6 +187,70 @@ export class AuthService {
           role: m.role,
         })),
       },
+    };
+  }
+
+  /**
+   * Canjea el pase de impersonación (lo emite el panel de la plataforma) por una
+   * sesión de 2 h como dueño de esa tienda. Se llama desde el dominio de la
+   * tienda para que la cookie quede allí. El pase vale un minuto y una sola vez.
+   */
+  async exchangeImpersonation(token: string) {
+    let payload: JwtPayload & { exp?: number };
+    try {
+      payload = await this.jwt.verifyAsync(token, {
+        secret: this.config.get<string>('jwt.secret'),
+      });
+    } catch {
+      throw new UnauthorizedException(
+        'El acceso a la tienda expiró. Vuelve a entrar desde el panel de la plataforma.',
+      );
+    }
+    if (payload.type !== 'impersonation' || !payload.tenantId || !payload.jti) {
+      throw new UnauthorizedException('Pase de acceso inválido.');
+    }
+
+    const now = Date.now();
+    for (const [id, exp] of this.usedImpersonationIds) {
+      if (exp <= now) this.usedImpersonationIds.delete(id);
+    }
+    if (this.usedImpersonationIds.has(payload.jti)) {
+      throw new UnauthorizedException(
+        'Este acceso ya se usó. Vuelve a entrar desde el panel de la plataforma.',
+      );
+    }
+    this.usedImpersonationIds.set(
+      payload.jti,
+      (payload.exp ?? now / 1000 + 60) * 1000,
+    );
+
+    // Sigue siendo el dueño de esa tienda (pudo cambiar en ese minuto).
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: {
+        tenantId: payload.tenantId,
+        userId: payload.sub,
+        role: 'TENANT_OWNER',
+      },
+      select: { tenant: { select: { slug: true, name: true } } },
+    });
+    if (!membership)
+      throw new UnauthorizedException('Pase de acceso inválido.');
+
+    // `mfa: true`: el pase solo lo emite una sesión de plataforma con 2FA. Sin
+    // la marca, si el dueño de la tienda es la propia cuenta de la plataforma,
+    // la API le respondería MFA_REQUIRED en cada ruta.
+    const accessToken = await this.jwt.signAsync(
+      {
+        sub: payload.sub,
+        email: payload.email,
+        type: 'operator',
+        mfa: true,
+      } satisfies JwtPayload,
+      { expiresIn: IMPERSONATION_TTL },
+    );
+    return {
+      accessToken,
+      tenant: { slug: membership.tenant.slug, name: membership.tenant.name },
     };
   }
 

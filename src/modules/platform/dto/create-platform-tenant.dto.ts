@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsEmail,
-  IsFQDN,
   IsIn,
   IsNumber,
   IsObject,
@@ -45,14 +44,6 @@ export class CreatePlatformTenantDto {
   @IsOptional()
   @IsString()
   ownerName?: string;
-
-  @ApiPropertyOptional({
-    description: 'Dominio personalizado (sin https://)',
-    example: 'tienda.caferoma.com',
-  })
-  @IsOptional()
-  @IsFQDN()
-  domain?: string;
 
   @ApiPropertyOptional({
     description: 'Feature flags iniciales',
