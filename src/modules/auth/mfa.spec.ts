@@ -28,6 +28,7 @@ interface FakeUser {
   totpEnabledAt: Date | null;
   totpLastStep: number | null;
   totpRecoveryCodes: string[];
+  lastLoginAt?: Date | null;
   memberships: { role: string; tenant: { slug: string } }[];
 }
 
@@ -159,6 +160,8 @@ describe('2FA de operadores', () => {
     const res = await auth.verifyMagicLink(user.email, 'raw');
     expect(res).toMatchObject({ mfaRequired: true });
     expect(res).not.toHaveProperty('accessToken');
+    // Sin el código aún no ha entrado: no cuenta como último acceso.
+    expect(user.lastLoginAt).toBeFalsy();
   });
 
   it('código válido + paso pendiente → sesión de operador', async () => {
@@ -174,6 +177,7 @@ describe('2FA de operadores', () => {
     expect(payload.type).toBe('operator');
     // Marca de sesión abierta con 2FA: la exige la cuenta de la plataforma.
     expect(payload.mfa).toBe(true);
+    expect(user.lastLoginAt).toBeInstanceOf(Date);
   });
 
   it('sin 2FA el enlace mágico entrega una sesión SIN la marca mfa', async () => {
@@ -185,6 +189,7 @@ describe('2FA de operadores', () => {
     };
     const payload = await jwt.verifyAsync<{ mfa?: boolean }>(res.accessToken);
     expect(payload.mfa).toBeUndefined();
+    expect(user.lastLoginAt).toBeInstanceOf(Date);
   });
 
   it('código inválido o token que no es de paso pendiente → 401', async () => {

@@ -36,6 +36,7 @@ const PRODUCT_CARD_SELECT = {
       sizeGrams: true,
       grind: true,
       priceOneTime: true,
+      compareAtPrice: true,
       priceSubscription: true,
       stock: true,
     },

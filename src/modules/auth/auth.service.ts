@@ -165,6 +165,12 @@ export class AuthService {
     },
     mfa: boolean,
   ) {
+    // Para Equipo: saber quién ya entró al panel y cuándo fue la última vez.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
     const accessToken = await this.signToken({
       sub: user.id,
       email: user.email,

@@ -27,6 +27,16 @@ export class CreateVariantDto {
   @Min(0)
   priceSubscription?: number | null;
 
+  @ApiPropertyOptional({
+    description:
+      'Precio anterior a la rebaja (centavos COP), mayor que `priceOneTime`. Se muestra tachado; `null` quita la rebaja.',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  compareAtPrice?: number | null;
+
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()
   @IsInt()

@@ -31,7 +31,9 @@ export class MembersService {
       select: {
         role: true,
         createdAt: true,
-        user: { select: { id: true, email: true, name: true } },
+        user: {
+          select: { id: true, email: true, name: true, lastLoginAt: true },
+        },
       },
     });
     return members.map((m) => ({
@@ -40,6 +42,7 @@ export class MembersService {
       name: m.user.name,
       role: m.role,
       createdAt: m.createdAt,
+      lastLoginAt: m.user.lastLoginAt,
     }));
   }
 

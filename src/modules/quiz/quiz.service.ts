@@ -56,6 +56,7 @@ export class QuizService {
             sizeGrams: true,
             grind: true,
             priceOneTime: true,
+            compareAtPrice: true,
             priceSubscription: true,
           },
         },

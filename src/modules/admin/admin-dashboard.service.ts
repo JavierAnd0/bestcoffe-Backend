@@ -221,9 +221,24 @@ export class AdminDashboardService {
     return result;
   }
 
-  async listCustomers(tenantId: string, cursor?: string, limit = 30) {
+  async listCustomers(
+    tenantId: string,
+    cursor?: string,
+    limit = 30,
+    q?: string,
+  ) {
+    // Búsqueda por nombre o email, sin distinguir mayúsculas.
+    const term = q?.trim().slice(0, 100);
     const customers = await this.prisma.customer.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(term && {
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+          ],
+        }),
+      },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { createdAt: 'desc' },

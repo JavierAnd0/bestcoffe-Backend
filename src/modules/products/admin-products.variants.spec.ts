@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AdminProductsService } from './admin-products.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { RevalidationService } from '../revalidation/revalidation.service';
@@ -93,6 +97,71 @@ describe('AdminProductsService · variantes', () => {
     expect(prisma.productVariant.update).toHaveBeenCalledWith({
       where: { id: 'v1' },
       data: { priceSubscription: null },
+    });
+  });
+});
+
+describe('AdminProductsService · precio rebajado', () => {
+  it('guarda el precio anterior cuando es mayor que el precio', async () => {
+    const { svc, prisma } = setup();
+    prisma.productVariant.findFirst.mockResolvedValueOnce({
+      id: 'v1',
+      priceOneTime: 4_800_000,
+      compareAtPrice: null,
+      product: { slug: 'cafe' },
+    });
+    await svc.updateVariant('t1', 'demo', 'v1', { compareAtPrice: 6_000_000 });
+    expect(prisma.productVariant.update).toHaveBeenCalledWith({
+      where: { id: 'v1' },
+      data: { compareAtPrice: 6_000_000 },
+    });
+  });
+
+  it('rechaza un precio anterior igual o menor que el precio', async () => {
+    const { svc, prisma } = setup();
+    prisma.productVariant.findFirst.mockResolvedValueOnce({
+      id: 'v1',
+      priceOneTime: 4_800_000,
+      compareAtPrice: null,
+      product: { slug: 'cafe' },
+    });
+    await expect(
+      svc.updateVariant('t1', 'demo', 'v1', { compareAtPrice: 4_800_000 }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.productVariant.update).not.toHaveBeenCalled();
+  });
+
+  it('valida contra el precio guardado si solo cambia el precio', async () => {
+    const { svc, prisma } = setup();
+    prisma.productVariant.findFirst.mockResolvedValueOnce({
+      id: 'v1',
+      priceOneTime: 4_800_000,
+      compareAtPrice: 6_000_000,
+      product: { slug: 'cafe' },
+    });
+    // Subir el precio por encima de la rebaja vigente la dejaría sin sentido.
+    await expect(
+      svc.updateVariant('t1', 'demo', 'v1', { priceOneTime: 6_500_000 }),
+    ).rejects.toThrow(
+      'El precio anterior debe ser mayor que el precio actual.',
+    );
+  });
+
+  it('null quita la rebaja', async () => {
+    const { svc, prisma } = setup();
+    prisma.productVariant.findFirst.mockResolvedValueOnce({
+      id: 'v1',
+      priceOneTime: 4_800_000,
+      compareAtPrice: 6_000_000,
+      product: { slug: 'cafe' },
+    });
+    await svc.updateVariant('t1', 'demo', 'v1', {
+      priceOneTime: 6_500_000,
+      compareAtPrice: null,
+    });
+    expect(prisma.productVariant.update).toHaveBeenCalledWith({
+      where: { id: 'v1' },
+      data: { priceOneTime: 6_500_000, compareAtPrice: null },
     });
   });
 });

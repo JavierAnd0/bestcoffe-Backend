@@ -36,11 +36,12 @@ describe('MembersService', () => {
     it('filtra por la tienda y aplana los datos del usuario', async () => {
       const { prisma, service } = setup();
       const createdAt = new Date('2026-01-01T00:00:00Z');
+      const lastLoginAt = new Date('2026-02-01T00:00:00Z');
       prisma.tenantMembership.findMany.mockResolvedValue([
         {
           role: 'TENANT_OWNER',
           createdAt,
-          user: { id: 'u1', email: 'a@x.co', name: 'Ana' },
+          user: { id: 'u1', email: 'a@x.co', name: 'Ana', lastLoginAt },
         },
       ]);
 
@@ -56,6 +57,7 @@ describe('MembersService', () => {
           name: 'Ana',
           role: 'TENANT_OWNER',
           createdAt,
+          lastLoginAt,
         },
       ]);
     });
