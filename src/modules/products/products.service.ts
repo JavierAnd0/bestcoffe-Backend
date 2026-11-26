@@ -51,6 +51,7 @@ export class ProductsService {
             sizeGrams: true,
             grind: true,
             priceOneTime: true,
+            compareAtPrice: true,
             priceSubscription: true,
             stock: true,
           },
@@ -139,7 +140,12 @@ export class ProductsService {
         variants: {
           orderBy: { sizeGrams: 'asc' },
           take: 1,
-          select: { id: true, sizeGrams: true, priceOneTime: true },
+          select: {
+            id: true,
+            sizeGrams: true,
+            priceOneTime: true,
+            compareAtPrice: true,
+          },
         },
       },
     });

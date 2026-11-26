@@ -21,8 +21,11 @@ export class AdminCustomersController {
     @CurrentTenant() tenant: CurrentTenantData,
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
   ) {
     const l = Math.min(parseInt(limit ?? '30', 10) || 30, 100);
-    return this.dashboard.listCustomers(tenant.id, cursor, l);
+    // `?q=a&q=b` llega como arreglo: solo se acepta un texto.
+    const term = typeof q === 'string' ? q : undefined;
+    return this.dashboard.listCustomers(tenant.id, cursor, l, term);
   }
 }

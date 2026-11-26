@@ -263,6 +263,9 @@ model User {
   email     String   @unique
   name      String?
   createdAt DateTime @default(now())
+  // Último inicio de sesión real (enlace o enlace + 2FA). No cuenta la
+  // impersonación de la plataforma. Null: nunca ha entrado al panel.
+  lastLoginAt DateTime?
 
   // Magic link de login (sha-256 del token raw enviado por correo, single-use)
   loginToken          String?
@@ -430,6 +433,9 @@ model ProductVariant {
   grind                     GrindFormat
   priceOneTime              Int // COP centavos
   priceSubscription         Int?
+  // Precio "antes" de una rebaja (centavos COP): la tienda lo muestra tachado.
+  // Se cobra siempre priceOneTime; null = sin rebaja.
+  compareAtPrice            Int?
   stock                     Int         @default(0)
   stripePriceIdOneTime      String?
   stripePriceIdSubscription String?

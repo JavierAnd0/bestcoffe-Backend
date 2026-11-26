@@ -58,6 +58,9 @@ export class AdminProductsService {
   }
 
   async create(tenantId: string, tenantSlug: string, dto: CreateProductDto) {
+    for (const v of dto.variants ?? []) {
+      assertCompareAt(v.priceOneTime, v.compareAtPrice);
+    }
     await this.assertProductQuota(tenantId);
     const slug = dto.slug ?? (await this.uniqueSlug(tenantId, dto.name));
 
@@ -85,6 +88,7 @@ export class AdminProductsService {
               grind: v.grind,
               priceOneTime: v.priceOneTime,
               priceSubscription: v.priceSubscription,
+              compareAtPrice: v.compareAtPrice ?? null,
               stock: v.stock ?? 0,
             })),
           },
@@ -153,6 +157,7 @@ export class AdminProductsService {
     productId: string,
     dto: CreateVariantDto,
   ) {
+    assertCompareAt(dto.priceOneTime, dto.compareAtPrice);
     const product = await this.ensureProduct(tenantId, productId);
     const variant = await this.prisma.productVariant.create({
       data: {
@@ -162,6 +167,7 @@ export class AdminProductsService {
         grind: dto.grind,
         priceOneTime: dto.priceOneTime,
         priceSubscription: dto.priceSubscription,
+        compareAtPrice: dto.compareAtPrice ?? null,
         stock: dto.stock ?? 0,
       },
     });
@@ -180,6 +186,13 @@ export class AdminProductsService {
       include: { product: { select: { slug: true } } },
     });
     if (!variant) throw new NotFoundException('Variante no encontrada');
+    // Se valida contra el resultado final: el cambio puede tocar solo uno de los dos precios.
+    assertCompareAt(
+      dto.priceOneTime ?? variant.priceOneTime,
+      dto.compareAtPrice !== undefined
+        ? dto.compareAtPrice
+        : variant.compareAtPrice,
+    );
 
     const updated = await this.prisma.productVariant.update({
       where: { id: variantId },
@@ -191,6 +204,9 @@ export class AdminProductsService {
         }),
         ...(dto.priceSubscription !== undefined && {
           priceSubscription: dto.priceSubscription,
+        }),
+        ...(dto.compareAtPrice !== undefined && {
+          compareAtPrice: dto.compareAtPrice,
         }),
         ...(dto.stock !== undefined && { stock: dto.stock }),
       },
@@ -394,6 +410,18 @@ export function assertOwnBlobImage(url: string, tenantSlug: string): void {
   if (path.includes('..') || !path.startsWith(`/products/${tenantSlug}/`)) {
     throw new BadRequestException(
       'La imagen debe subirse desde el panel de esta tienda',
+    );
+  }
+}
+
+/** El precio anterior (tachado) solo tiene sentido si es mayor que el que se cobra. */
+function assertCompareAt(
+  price: number,
+  compareAt: number | null | undefined,
+): void {
+  if (compareAt != null && compareAt <= price) {
+    throw new BadRequestException(
+      'El precio anterior debe ser mayor que el precio actual.',
     );
   }
 }
